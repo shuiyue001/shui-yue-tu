@@ -2862,6 +2862,7 @@ body.pure-view #touch-dpad {
         <button class="hud-btn primary-red" id="btn-toggle-menu-drawer" title="打开菜单 / Open Menu">☰ 菜单</button>
       </div>
       <div id="top-right-sub-bar">
+        <div class="online-pilgrims-pill" id="online-pilgrims-pill" title="同游行者 / Online Pilgrims">👥 在线 <span id="online-pilgrims-count">1</span></div>
         <button class="hud-btn primary-red" id="btn-top-store" tabindex="-1" title="个人空间商城 / Store (2 VP)">🏪 商城</button>
         <button class="hud-btn" id="btn-top-task-map" tabindex="-1" title="十方寻佛地图 / 10-Stop Map">🗺️ 地图</button>
         <button class="hud-btn lang-toggle-top-btn" id="hud-lang-toggle-btn" tabindex="-1" title="切换中文 / Switch to English">🌐 中文 · EN</button>
@@ -2915,7 +2916,6 @@ body.pure-view #touch-dpad {
 
     <div class="right-card">
       <h3>⚙️ 声音与设置</h3>
-      <div class="online-pilgrims-pill" id="online-pilgrims-pill" style="margin-bottom:8px; justify-content:center;" title="同游行者 / Online Pilgrims">👥 在线 <span id="online-pilgrims-count">1</span></div>
       <div class="menu-icon-grid">
         <button class="hud-btn" id="btn-audio-toggle">🔊 音效</button>
         <button class="hud-btn" id="btn-voice-toggle">🗣️ 语音: 开</button>
@@ -12133,8 +12133,10 @@ class BuddhistPracticeGame {
     this.playerGroup.add(compassGroup);
 
     if (this.playerGroup.position.lengthSq() === 0) {
-      const startY = window.GAME_DATA.getTerrainHeight(0, 105);
-      this.playerGroup.position.set(0, startY, 105);
+      const spawnX = (Math.random() - 0.5) * 3.8;
+      const spawnZ = 104.5 + (Math.random() - 0.5) * 2.4;
+      const startY = window.GAME_DATA.getTerrainHeight(spawnX, spawnZ);
+      this.playerGroup.position.set(spawnX, startY, spawnZ);
       this.playerGroup.rotation.y = Math.PI;
     }
     this.scene.add(this.playerGroup);

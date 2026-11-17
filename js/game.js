@@ -1931,8 +1931,10 @@ class BuddhistPracticeGame {
     this.playerGroup.add(compassGroup);
 
     if (this.playerGroup.position.lengthSq() === 0) {
-      const startY = window.GAME_DATA.getTerrainHeight(0, 105);
-      this.playerGroup.position.set(0, startY, 105);
+      const spawnX = (Math.random() - 0.5) * 3.8;
+      const spawnZ = 104.5 + (Math.random() - 0.5) * 2.4;
+      const startY = window.GAME_DATA.getTerrainHeight(spawnX, spawnZ);
+      this.playerGroup.position.set(spawnX, startY, spawnZ);
       this.playerGroup.rotation.y = Math.PI;
     }
     this.scene.add(this.playerGroup);
