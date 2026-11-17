@@ -1,0 +1,7 @@
+# Local dev scripts, notes, and zip bundle excluded from GitHub Pages repo
+ShuiYueTu_Game_Package.zip
+plan.md
+Play_Game.bat
+server.ps1
+.DS_Store
+Thumbs.db

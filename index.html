@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>水月图</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Three.js 3D Engine & GLTFLoader for Custom 3D Models -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+  <!-- 3D WebGL Viewport -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Interactive 3D Floating World Labels (Only surface when character approaches!) -->
+  <div id="world-labels"></div>
+
+  <!-- Floating +Virtue Points & Prayer Text Layer -->
+  <div id="floating-fx-layer"></div>
+
+  <!-- Toast Notification Banner -->
+  <div id="toast-banner">🌙 水月图 — 走走逛逛做善事，礼敬诸佛攒功德！</div>
+
+  <!-- Cinematic 3D Cutscene Overlay (For 7-Buddha Cards & Quests except Wish Tree) -->
+  <div id="cutscene-overlay" class="hidden">
+    <div class="cutscene-bar cutscene-top">
+      <span class="cutscene-badge">🎬 STORY MOMENT</span>
+      <button class="cutscene-skip-btn" id="btn-skip-cutscene">Skip ⏭️</button>
+    </div>
+    <div class="cutscene-bar cutscene-bottom">
+      <div class="cutscene-emoji" id="cutscene-emoji">🪷</div>
+      <div class="cutscene-text">
+        <h3 id="cutscene-title">Good Deed Complete!</h3>
+        <p id="cutscene-subtitle"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top HUD Bar (Ultra-Minimal Phone-First: Points Left, Compact Zone Nav + Menu Drawer Right) -->
+  <header id="top-hud">
+    <!-- Left Card: Avatar + Virtue & Liberation Points -->
+    <div class="hud-card" id="top-points-card">
+      <div class="player-badge">
+        <div class="avatar-circle" id="hud-avatar" style="overflow:hidden; padding:0;"><img src="assets/little_monk_avatar.jpg" alt="Little Monk" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>
+        <div class="player-meta">
+          <h3 id="hud-player-name">Little Lama</h3>
+          <p id="hud-char-title">🌱 Novice Traveler</p>
+        </div>
+      </div>
+      <div class="virtue-counter-box">
+        <span class="virtue-icon">🪷</span>
+        <div class="virtue-numbers">
+          <span class="label" id="label-virtue-point">Virtue Point</span>
+          <span class="value" id="hud-virtue-points">0</span>
+        </div>
+      </div>
+      <div class="virtue-counter-box liberation-counter-box" id="liberation-counter-box" title="Liberation Points earned through 「回向」 (Merit Dedication)">
+        <span class="virtue-icon">✨</span>
+        <div class="virtue-numbers">
+          <span class="label" id="label-liberation-point">Liberation Point</span>
+          <span class="value" id="hud-liberation-points">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Card Stack: Compact Zone Tabs + Menu Drawer Top, Store & Task Map Directly Below 菜单 -->
+    <div id="top-right-stack">
+      <div class="hud-card scene-tabs" id="top-nav-card">
+        <button class="scene-tab active" id="tab-courtyard" title="返回起点 / Return to Start">⛰️ 起点</button>
+        <button class="scene-tab" id="tab-stupa" title="七佛塔 / 7 Stupas">☸️ 七佛塔</button>
+        <button class="scene-tab locked" id="tab-prayer-hall">🔒 佛殿</button>
+        <button class="scene-tab locked" id="tab-wenshu-hall" title="文殊殿 / Manjushri Hall">🔒 文殊殿</button>
+        <button class="scene-tab" id="tab-changshou-hall" title="长寿殿 / Longevity Hall">🏺 长寿殿</button>
+        <button class="hud-btn primary-red" id="hud-btn-qianfodian" tabindex="-1" title="修行技能与千佛殿 / Skills &amp; 千佛殿">🏮 技能·千佛</button>
+        <button class="hud-btn primary-red" id="btn-toggle-menu-drawer" title="打开菜单 / Open Menu">☰ 菜单</button>
+      </div>
+      <div id="top-right-sub-bar">
+        <button class="hud-btn primary-red" id="btn-top-store" tabindex="-1" title="个人空间商城 / Store (2 VP)">🏪 商城</button>
+        <button class="hud-btn" id="btn-top-task-map" tabindex="-1" title="十方寻佛地图 / 10-Stop Map">🗺️ 地图</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Left Panel: Concise Quest Compass List (Starts collapsed for tranquil unobstructed 3D sanctuary view) -->
+  <aside id="side-panel" class="collapsed">
+    <div class="panel-header">
+      <h2>🧭 Good Deed Hints</h2>
+      <div style="display:flex; gap:5px; align-items:center;">
+        <button class="collapse-btn" id="reset-deeds-btn" title="Reset Progress" style="width:auto; padding:0 7px; font-size:11px;">🔄</button>
+        <button class="collapse-btn" id="toggle-deeds-btn" title="Collapse / Expand">◀</button>
+      </div>
+    </div>
+    <div class="panel-progress">
+      <div class="progress-caption">
+        <span id="deeds-progress-text">0 / 13 Deeds</span>
+        <span id="hall-unlock-status">Need 5 Deeds for Hall</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="deeds-progress-fill"></div>
+      </div>
+    </div>
+    <div class="deeds-list" id="deeds-list-container">
+      <!-- Populated dynamically with concise 1-line English location items -->
+    </div>
+  </aside>
+
+  <!-- Right Panel Drawer (Kid-Friendly 2-Card Layout: Treasure Box + Settings) -->
+  <aside id="right-panel" class="collapsed">
+    <div class="panel-header" style="padding:10px 12px; border-radius:14px;">
+      <h2>📜 快捷菜单</h2>
+      <button class="collapse-btn" id="close-right-panel" title="关闭 / Close">✕</button>
+    </div>
+
+    <div class="right-card">
+      <h3>🎒 百宝箱</h3>
+      <div class="menu-icon-grid">
+        <button class="hud-btn" id="tab-personal-space">🌱 个人道场</button>
+        <button class="hud-btn primary-red" id="btn-menu-store">🏪 商城</button>
+        <button class="hud-btn" id="btn-menu-task-map">🗺️ 寻佛地图</button>
+        <button class="hud-btn" id="btn-open-skills-window">✨ 技能·千佛</button>
+        <button class="hud-btn" id="btn-open-buddhas">📖 认识七佛</button>
+        <button class="hud-btn" id="btn-open-stickers">🎖️ 功德徽章</button>
+        <button class="hud-btn" id="btn-open-quiz">🧠 智慧问答</button>
+        <button class="hud-btn primary-red" id="btn-open-temple-designer">🏯 殿宇样式</button>
+      </div>
+    </div>
+
+    <div class="right-card">
+      <h3>⚙️ 声音与设置</h3>
+      <div class="online-pilgrims-pill" id="online-pilgrims-pill" style="margin-bottom:8px; justify-content:center;" title="同游行者 / Online Pilgrims">👥 在线 <span id="online-pilgrims-count">1</span></div>
+      <div class="menu-icon-grid">
+        <button class="hud-btn" id="btn-audio-toggle">🔊 音效</button>
+        <button class="hud-btn" id="btn-voice-toggle">🗣️ 语音: 开</button>
+        <button class="hud-btn" id="btn-nature-toggle">🍃 自然音: 关</button>
+        <button class="hud-btn lang-toggle-top-btn" id="hud-lang-toggle-btn" tabindex="-1">🌐 中文 / EN</button>
+        <button class="hud-btn" id="btn-pure-view">👁️ 纯净视角</button>
+        <a class="hud-btn" href="ShuiYueTu_Shareable_Game.html" download="ShuiYueTu_Shareable_Game.html" style="text-decoration:none; background:linear-gradient(180deg,#e8f8ee,#bfead0); border-color:#2e8b57; color:#184d2c;">📥 分享版</a>
+        <button class="hud-btn reset-top-btn" id="top-reset-btn" style="grid-column:span 2;">🔄 重置进度</button>
+      </div>
+    </div>
+
+    <!-- Hidden Legacy DOM Nodes for State Sync Compatibility -->
+    <div class="hidden" aria-hidden="true">
+      <div id="buddha-bow-quest-progress">Bowed: 0 / 7 Buddhas</div>
+      <button id="btn-right-bow-buddhas" type="button">🙏</button>
+      <button id="btn-right-quiz" type="button">🧠</button>
+      <div class="offering-pill" data-offering="water"></div>
+      <div class="offering-pill" data-offering="flower"></div>
+      <div class="offering-pill" data-offering="scent"></div>
+      <div class="skill-box" id="skill-status-box">
+        <span id="skill-box-title-text">南无阿弥陀佛</span>
+        <span class="skill-unlock-pill" id="skill-unlock-badge"></span>
+        <div id="skill-progress-label"></div>
+        <button class="skill-btn" id="btn-skill-amitofo" disabled></button>
+      </div>
+      <div id="right-extra-skills-container"></div>
+      <button id="hud-top-reset-btn" type="button"></button>
+    </div>
+  </aside>
+
+  <!-- Bottom HUD: Big Talking Window + 7-Buddha Live Blessing Card + Prayer Hall 5-Action Selection Box -->
+  <div id="bottom-hud">
+    <!-- Big RPG Talking Window + Action Box (Outside in Mountain Valley) -->
+    <div id="proximity-prompt"></div>
+
+    <!-- Live 7-Buddha Blessing Card (Shows each Buddha's Name, Wish & Benefit during the 25 Bows!) -->
+    <div id="bow-blessing-banner"></div>
+
+    <!-- Prayer Hall Action Selection Box (Appears automatically when entering the Prayer Hall! Every action = +10 VP) -->
+    <div id="meditation-mat-bar">
+      <div class="mat-bar-header">
+        <span id="hall-status-text">🏮 殿内修行 (+10 功德)</span>
+        <div class="mat-header-actions" style="display:flex; gap:6px; align-items:center;">
+          <button class="hud-btn" id="btn-hall-learn-buddhas" style="padding:4px 10px; font-size:11.5px;">🙏 七佛</button>
+          <button class="hud-btn primary-red" id="btn-hall-quiz" style="padding:4px 10px; font-size:11.5px;">🧠 问答</button>
+          <button class="hud-btn" id="btn-hall-teleport-start" style="padding:4px 10px; font-size:11.5px;">⛰️ 回起点</button>
+          <button class="hud-btn" id="btn-leave-mat" style="display:none;">🚶 起身</button>
+          <button class="hud-btn" id="btn-toggle-mat-bar" style="padding:4px 9px; font-size:11.5px;" title="收起 / 展开">▾ 收起</button>
+        </div>
+      </div>
+      <div class="mat-actions-grid">
+        <button class="mat-btn" data-hall-action="1">1. 🧘 打坐</button>
+        <button class="mat-btn" data-hall-action="2" id="btn-hall-bow25">2. 🙏 礼佛</button>
+        <button class="mat-btn" data-hall-action="3">3. 💧 供水</button>
+        <button class="mat-btn" data-hall-action="4">4. 🪷 供花</button>
+        <button class="mat-btn" data-hall-action="5">5. 🪔 供香</button>
+        <button class="mat-btn" id="mat-btn-amitofo" disabled>🔒 念佛</button>
+      </div>
+    </div>
+
+    <!-- Sansa-Inspired Serene Frosted-Glass Sanctuary Action Dock -->
+    <div id="sanctuary-dock">
+      <button class="dock-btn" id="dock-btn-palms" title="合掌礼敬 / Join Palms">
+        <span>🙏</span><small>合掌</small>
+      </button>
+      <button class="dock-btn" id="dock-btn-bow" title="至诚礼拜 / Deep Mindful Bow">
+        <span>🙇</span><small>礼拜</small>
+      </button>
+      <button class="dock-btn" id="dock-btn-sit" title="静坐赏景 / Sit or Stand Up">
+        <span>🧘</span><small id="dock-sit-label">静坐</small>
+      </button>
+      <button class="dock-btn dock-amitofo-btn" id="dock-btn-amitofo" title="按快捷键 [L] 念诵当前祈祷技能 / Shortcut [L] Active Prayer">
+        <span>🪷</span><small>念佛 [L] <span id="dock-amitofo-count">0</span>/100</small>
+      </button>
+      <button class="dock-btn" id="dock-btn-muyu" title="轻敲木鱼 / Wooden Fish">
+        <span>🪵</span><small>木鱼</small>
+      </button>
+      <button class="dock-btn" id="dock-btn-quests" title="功德任务指南 / Quests">
+        <span>🧭</span><small>任务</small>
+      </button>
+    </div>
+
+    <div class="controls-hint">
+      🎮 WASD / 方向键：移动 &nbsp;·&nbsp; 🦘 空格：跳跃 &nbsp;·&nbsp; ⏎ E：互动 &nbsp;·&nbsp; 🙏 L：念佛 &nbsp;·&nbsp; 🖱️ 拖动：视角
+    </div>
+  </div>
+
+  <!-- Floating Exit Pure View Pill (Shown only when HUD is hidden for mindful contemplation) -->
+  <button id="pure-view-exit-btn" class="hidden" title="Restore Interface">👁️ Show Controls</button>
+
+  <!-- On-Screen Touch D-Pad for Juniors / Tablets -->
+  <div id="touch-dpad">
+    <div></div>
+    <button class="dpad-btn" data-dir="up">▲</button>
+    <div></div>
+    <button class="dpad-btn" data-dir="left">◀</button>
+    <div style="display:flex;align-items:center;justify-content:center;font-size:14px;">🪷</div>
+    <button class="dpad-btn" data-dir="right">▶</button>
+    <div></div>
+    <button class="dpad-btn" data-dir="down">▼</button>
+    <div></div>
+  </div>
+
+  <!-- MODAL 1: 4-Character Designer Modal (Concise English Names Only) -->
+  <div class="modal-backdrop hidden" id="char-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🎨 Character Design</h2>
+        <button class="modal-close" id="close-char-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="custom-row">
+          <label for="input-player-name">Your Name:</label>
+          <input
+            type="text"
+            id="input-player-name"
+            maxlength="28"
+            style="padding:8px 12px; border-radius:10px; border:1.5px solid #d4a857; font-size:14px; font-weight:700;"
+          />
+        </div>
+
+        <div class="custom-row">
+          <label>1. Character:</label>
+          <div class="char-grid" id="char-archetype-grid"></div>
+        </div>
+
+        <div class="custom-row">
+          <label>2. Robe Color:</label>
+          <div class="swatch-row" id="robe-swatch-row"></div>
+        </div>
+
+        <div class="custom-row">
+          <label>3. Headwear:</label>
+          <div class="option-pills" id="headwear-options-row"></div>
+        </div>
+
+        <div class="custom-row">
+          <label>4. Companion Aura:</label>
+          <div class="option-pills" id="aura-options-row"></div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:6px;">
+          <button class="hud-btn primary-red" id="save-char-btn" style="padding:10px 22px; font-size:14px;">
+            ✨ Save Character
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Temple Architect & Buddha Designer Studio -->
+  <div class="modal-backdrop hidden" id="temple-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🏯 Temple & Buddha Studio</h2>
+        <button class="modal-close" id="close-temple-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="custom-row">
+          <label>1. Temple Architectural Style:</label>
+          <div class="option-pills" id="temple-style-row"></div>
+        </div>
+
+        <div class="custom-row">
+          <label>2. 7-Buddha Statue Material:</label>
+          <div class="option-pills" id="buddha-material-row"></div>
+        </div>
+
+        <div class="custom-row">
+          <label>3. Sky Atmosphere:</label>
+          <div class="option-pills" id="sky-theme-row"></div>
+        </div>
+
+        <div class="custom-row" style="background:#fff4d9; padding:12px; border-radius:12px; border:1.5px dashed #c57b17;">
+          <label>4. Optional: Import Custom 3D Model (<code>.glb</code> / <code>.gltf</code>):</label>
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:4px;">
+            <input type="file" id="glb-file-input" accept=".glb,.gltf" style="font-size:12px;" />
+            <span id="glb-upload-status" style="font-size:11.5px; font-weight:700; color:#2e8b57;"></span>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end;">
+          <button class="hud-btn primary-red" id="apply-temple-design-btn" style="padding:9px 20px;">
+            ✨ Apply Temple Design
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Learn About the 7 Buddhas (Straightforward Name, Wish & Benefit of Bowing) -->
+  <div class="modal-backdrop hidden" id="buddha-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🙏 Meet the Seven Buddhas (Name, Wish & Benefit of Bowing)</h2>
+        <button class="modal-close" id="close-buddha-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px; font-weight:700; color:#5c3818;">
+          Click each of the <strong>7 Buddhas</strong> below to learn their <strong>Name</strong>, their <strong>Kind Wish</strong>, and the <strong>Benefit of Bowing</strong> to them!
+        </p>
+        <div class="buddha-tabs" id="buddha-tabs-container"></div>
+        <div id="buddha-detail-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: Personal Space Store (房屋、素食、种子、鲜花、供水、妙香，每项 2 功德) -->
+  <div class="modal-backdrop hidden" id="personal-modal">
+    <div class="modal-card" style="width:min(680px, 95vw); border:3px solid #d4941c;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b45309); color:#fff8dc;">
+        <h2 style="color:#ffd700;">🏪 个人空间商城 (Personal Space Store)</h2>
+        <button class="modal-close" id="close-personal-modal">✕</button>
+      </div>
+      <div class="modal-body" style="gap:10px;">
+        <div id="store-space-banner"></div>
+        <div class="store-grid" id="personal-items-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: Collectible Virtue & 7-Buddha Sticker Book -->
+  <div class="modal-backdrop hidden" id="sticker-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>🎖️ My Virtue & 7-Buddha Sticker Book</h2>
+        <button class="modal-close" id="close-sticker-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px; font-weight:700; color:#5c3818;" id="sticker-progress-summary">
+          Complete good deeds, circle the White Stupa, bow to all 7 Buddhas, and pass the 7-Buddha Quiz to collect all 6 golden stickers!
+        </p>
+        <div class="sticker-grid" id="sticker-grid-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 6: Bodhi Wishing Tree — Simplified Traditional Wish Plaques -->
+  <div class="modal-backdrop hidden" id="wishing-tree-modal">
+    <div class="modal-card" style="width:min(620px, 95vw); border:3px solid #d4941c;">
+      <div class="modal-header">
+        <h2>🎋 Bodhi Wishing Tree</h2>
+        <button class="modal-close" id="close-wishing-tree-modal">✕</button>
+      </div>
+      <div class="modal-body" style="gap:10px;">
+        <p style="font-size:13.5px; font-weight:800; color:#5a250a; text-align:center;">
+          Click a traditional wish plaque to hang it on the Bodhi Tree:
+        </p>
+        <div class="wishes-grid" id="wishes-grid-container"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; flex-wrap:wrap; gap:8px;">
+          <div id="selected-wish-preview" style="font-size:13px; font-weight:800; color:#8b3a1e;">
+            🎋 Click a plaque above to hang it on the tree!
+          </div>
+          <button class="primary-gold-btn" id="btn-confirm-hang-wish" style="padding:8px 18px; font-size:13.5px;">
+            🌳 Done
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 7: Bow to Buddha Quest — Wish & Benefit Acknowledgment Card (+10 VP per Buddha) -->
+  <div class="modal-backdrop hidden" id="buddha-bow-ack-modal">
+    <div class="modal-card" style="width:min(640px, 94vw); border:3px solid #d4af37;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b22222); color:#fff8dc;">
+        <h2 id="ack-buddha-title" style="color:#ffd700;">🙏 Bowing to 1. Vipassi Buddha</h2>
+      </div>
+      <div class="modal-body" id="ack-buddha-body">
+        <!-- Populated dynamically with: 1. The Wish of the Buddha, 2. The Benefit of Bowing, and Acknowledge Button -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 8: Interactive Skill Mini-Challenge for Good Deeds (Game Designer Enhancement #1) -->
+  <div class="modal-backdrop hidden" id="minigame-modal">
+    <div class="modal-card" style="width:min(600px, 94vw); border:3px solid #d49b27;">
+      <div class="modal-header">
+        <h2 id="minigame-title">🎯 Good Deed Skill Challenge</h2>
+        <button class="modal-close" id="close-minigame-modal">✕</button>
+      </div>
+      <div class="modal-body" id="minigame-body">
+        <!-- Populated dynamically with interactive timing, sorting, or sweeping mini-game -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 9: 7-Buddha Wisdom Master Quiz (Game Designer Enhancement #2) -->
+  <div class="modal-backdrop hidden" id="buddha-quiz-modal">
+    <div class="modal-card" style="width:min(640px, 94vw); border:3px solid #c58b18;">
+      <div class="modal-header">
+        <h2>🧠 7-Buddha Wisdom Master Quiz (+30 VP & Golden Crown!)</h2>
+        <button class="modal-close" id="close-quiz-modal">✕</button>
+      </div>
+      <div class="modal-body" id="buddha-quiz-body">
+        <!-- Populated dynamically with 3 multiple-choice questions testing the 7 Buddhas' Wishes & Benefits -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 10: Offering Water / Flower / Incense Instruction & Benefit Modal -->
+  <div class="modal-backdrop hidden" id="offering-quest-modal">
+    <div class="modal-card" style="width:min(560px, 94vw); border:3px solid #d4941c;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #a83226); color:#fff8dc;">
+        <h2 id="offering-modal-title" style="color:#ffd700;">💧 Offer Pure Water</h2>
+        <button class="modal-close" id="close-offering-modal">✕</button>
+      </div>
+      <div class="modal-body" id="offering-modal-body" style="gap:12px;">
+        <!-- Populated dynamically with concise Instruction, Benefit of Offering, and Offer button -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 11: 「回向」 (Merit Dedication) Before Leaving Prayer Hall -->
+  <div class="modal-backdrop hidden" id="huixiang-modal">
+    <div class="modal-card" style="width:min(590px, 94vw); border:3px solid #d4af37;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7b1e1e, #b22222); color:#fff8dc;">
+        <h2 style="color:#ffd700;">🪷 Merit Dedication — 「回向」</h2>
+      </div>
+      <div class="modal-body" id="huixiang-modal-body" style="gap:12px;">
+        <!-- Step 1: Yes/No ask before leaving Prayer Hall; Step 2: 4 multi-select 回向 options -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 12: Mount Wutai Sutra Reading Book Modal (Editable Placeholders) -->
+  <div class="modal-backdrop hidden" id="sutra-book-modal">
+    <div class="modal-card" style="width:min(620px, 94vw); border:3px solid #d4941c;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b45309); color:#fff8dc;">
+        <h2 id="sutra-modal-title" style="color:#ffd700;">📖 五台山读经阁 · 经书宝卷</h2>
+        <button class="modal-close" id="close-sutra-modal">✕</button>
+      </div>
+      <div class="modal-body" id="sutra-book-body" style="gap:12px;">
+        <!-- Populated from window.GAME_DATA.SUTRA_BOOKS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 13: Prayer Skills & 千佛殿 Capability Window (35 Buddhas + 8 Bodhisattvas) -->
+  <div class="modal-backdrop hidden" id="skills-capability-modal">
+    <div class="modal-card" style="width:min(820px, 95vw); border:3px solid #d4941c;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b45309); color:#fff8dc;">
+        <h2 id="skills-capability-title" style="color:#ffd700;">🏮 修行技能与千佛殿 (Skills &amp; 千佛殿)</h2>
+        <button class="modal-close" id="close-skills-capability-modal">✕</button>
+      </div>
+      <div class="cap-tab-bar" id="cap-tab-bar">
+        <button class="cap-tab-btn active" data-cap-tab="all" id="cap-tab-all">✨ 全部总览</button>
+        <button class="cap-tab-btn" data-cap-tab="skills" id="cap-tab-skills">🙏 修行技能</button>
+        <button class="cap-tab-btn" data-cap-tab="qianfodian" id="cap-tab-qianfodian">🏮 千佛殿 (35佛·8菩萨)</button>
+      </div>
+      <div class="modal-body" id="skills-capability-body" style="gap:12px;">
+        <!-- Populated dynamically with Skill #1 Nanmo Amitofo + 35 Buddhas + 8 Bodhisattvas -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 100x AMITOFO SHARED SKY QUEST VISION (5 SECONDS, VISIBLE TO ALL PLAYERS) -->
+  <div id="amitofo-sky-quest-overlay" class="hidden" aria-live="polite">
+    <div class="sky-vision-frame">
+      <div class="sky-vision-header">
+        <span class="sky-vision-badge">✨ 圣境圆满 · 全服共赏 (5秒)</span>
+        <span id="sky-vision-player-tag">行者念满 100 声「南无阿弥陀佛」</span>
+      </div>
+      <img id="amitofo-sky-vision-img" src="assets/amitofo_sky_vision.jpg" alt="阿弥陀佛百念圣境" />
+      <div class="sky-vision-footer">
+        🪷 南无阿弥陀佛功德圆满百声 · 金莲祥云遍照十方，同游诸善信皆得瞻仰！
+      </div>
+    </div>
+  </div>
+
+  <!-- PICTURE #4 CHAIR REST BLOSSOM MEDITATION OVERLAY -->
+  <div id="chair-rest-blossom-overlay" class="hidden" aria-live="polite">
+    <div class="blossom-rest-card">
+      <div class="blossom-petals-layer" aria-hidden="true">
+        <span>🌸</span><span>🤍</span><span>🌸</span><span>💮</span><span>🤍</span><span>🌸</span>
+      </div>
+      <div class="blossom-rest-scene">
+        <img id="chair-rest-blossom-img" src="assets/chair_rest_blossom.jpg" alt="花下禅坐静休" />
+        <div class="blossom-ripple-ring r1"></div>
+        <div class="blossom-ripple-ring r2"></div>
+      </div>
+      <div class="blossom-rest-caption">
+        <h3 id="blossom-rest-title">🌸 花下静坐息心</h3>
+        <p id="blossom-rest-desc">微风轻拂白花繁枝，万缘放下，静心体会清净法喜。</p>
+      </div>
+      <div class="blossom-rest-actions">
+        <button class="hud-btn" id="btn-blossom-3d-view" title="关闭静境遮罩，欣赏3D白花禅座">👁️ 3D 实景</button>
+        <button class="primary-gold-btn" id="btn-blossom-stand-up">🚶 起身续行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 14: 10-Stop Buddha Discovery Task Map (Locked for Future Development) -->
+  <div class="modal-backdrop hidden" id="task-map-modal">
+    <div class="modal-card" style="width:min(820px, 95vw); border:3px solid #d4941c;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b45309); color:#fff8dc;">
+        <h2 id="task-map-modal-title" style="color:#ffd700;">🗺️ 十方寻佛任务地图 (10-Stop Task Map)</h2>
+        <button class="modal-close" id="close-task-map-modal">✕</button>
+      </div>
+      <div class="modal-body" id="task-map-modal-body" style="gap:12px;">
+        <!-- Populated dynamically with Virtue & Liberation Progress + 10 Locked Stops -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Scripts -->
+  <script src="js/data.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/models3d.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
