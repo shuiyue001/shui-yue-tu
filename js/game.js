@@ -286,7 +286,15 @@ class BuddhistPracticeGame {
       this.publicTempleGroup.remove(this.wisdomBridgeGroup);
       this.wisdomBridgeGroup = null;
     }
-    this.wisdomBridgeGroup = window.TempleModels3D.createWisdomBridgeModel(this.canCrossEastRiver());
+    const isBuilt = this.canCrossEastRiver();
+    this.wisdomBridgeGroup = window.TempleModels3D.createWisdomBridgeModel(isBuilt);
+    if (!isBuilt && this.wisdomBridgeGroup) {
+      this.wisdomBridgeGroup.traverse((child) => {
+        if (child.isMesh) {
+          child.userData.deedId = 'build_wisdom_bridge';
+        }
+      });
+    }
     this.publicTempleGroup.add(this.wisdomBridgeGroup);
   }
 
@@ -1607,9 +1615,15 @@ class BuddhistPracticeGame {
           } else {
             this.activeHintDeedId = deed.id;
             this.updateHUD();
+            const walkX = deed.id === 'build_wisdom_bridge' ? 23.0 : deed.pos.x;
+            const walkZ = deed.id === 'build_wisdom_bridge' ? 4.0 : deed.pos.z + 2.2;
             this.walkToAndTrigger(
-              new THREE.Vector3(deed.pos.x, terrainY, deed.pos.z + 2.2),
-              () => this.performGoodDeed(deed.id)
+              new THREE.Vector3(walkX, terrainY, walkZ),
+              () => {
+                this._walkingDeedTargetId = null;
+                this.performGoodDeed(deed.id);
+              },
+              deed.id
             );
           }
         }
@@ -1997,12 +2011,19 @@ class BuddhistPracticeGame {
     if (dist > 8.2) {
       this.activeHintDeedId = deed.id;
       this.updateHUD();
+      const walkX = deed.id === 'build_wisdom_bridge' ? 23.0 : deed.pos.x;
+      const walkZ = deed.id === 'build_wisdom_bridge' ? 4.0 : deed.pos.z + 2.2;
       this.walkToAndTrigger(
-        new THREE.Vector3(deed.pos.x, terrainY, deed.pos.z + 2.2),
-        () => this.performGoodDeed(deed.id)
+        new THREE.Vector3(walkX, terrainY, walkZ),
+        () => {
+          this._walkingDeedTargetId = null;
+          this.performGoodDeed(deed.id);
+        },
+        deed.id
       );
       return;
     }
+    this._walkingDeedTargetId = null;
 
     // Special Case: Bodhi Wishing Tree ("good_wishes") -> Always open the 8 Good Wishes Selector!
     if (deedId === 'good_wishes') {
@@ -4640,10 +4661,12 @@ class BuddhistPracticeGame {
     const mouse = new THREE.Vector2();
     let downX = 0;
     let downY = 0;
+    let canvasMouseDown = false;
 
     const canvas = this.renderer.domElement;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('mousedown', (e) => {
+      canvasMouseDown = true;
       this.isDraggingCam = true;
       this.prevMouseX = e.clientX;
       this.prevMouseY = e.clientY;
@@ -4669,6 +4692,9 @@ class BuddhistPracticeGame {
 
     window.addEventListener('mouseup', (e) => {
       this.isDraggingCam = false;
+      const wasCanvasDown = canvasMouseDown;
+      canvasMouseDown = false;
+      if (!wasCanvasDown || e.target !== canvas) return;
       const distMoved = Math.hypot(e.clientX - downX, e.clientY - downY);
       if (distMoved < 6) {
         mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
@@ -4752,8 +4778,12 @@ class BuddhistPracticeGame {
     });
   }
 
-  walkToAndTrigger(targetVec3, callback) {
+  walkToAndTrigger(targetVec3, callback, deedTargetId = null) {
     if (this.isSeatedOnMat) this.standUpFromMat();
+    if (this.seatedScenic || this.poseMode === 'sit') {
+      this.toggleSitScenicSpot(this.seatedScenic || null, false);
+    }
+    this._walkingDeedTargetId = deedTargetId;
     this.walkWaypoints = [];
     this.walkTarget = new THREE.Vector3(targetVec3.x, 0, targetVec3.z);
     this.walkCallback = callback;
@@ -4762,6 +4792,10 @@ class BuddhistPracticeGame {
   walkToPath(points, callback) {
     if (!points || !points.length) return;
     if (this.isSeatedOnMat) this.standUpFromMat();
+    if (this.seatedScenic || this.poseMode === 'sit') {
+      this.toggleSitScenicSpot(this.seatedScenic || null, false);
+    }
+    this._walkingDeedTargetId = null;
     const copy = points.map((p) => new THREE.Vector3(p.x, 0, p.z));
     this.walkTarget = copy.shift();
     this.walkWaypoints = copy;
@@ -6745,6 +6779,7 @@ class BuddhistPracticeGame {
       this.bilingualLabels.push({ el, enText: text, zhText });
     }
     if (onClick) {
+      el.addEventListener('mousedown', (e) => e.stopPropagation());
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         onClick();
@@ -7018,6 +7053,7 @@ class BuddhistPracticeGame {
         this.isAutoCirclingStupa = false;
       }
     } else if (moveX !== 0 || moveZ !== 0) {
+      this._walkingDeedTargetId = null;
       const len = Math.hypot(moveX, moveZ);
       moveX /= len;
       moveZ /= len;
@@ -8661,29 +8697,31 @@ class BuddhistPracticeGame {
       return;
     }
 
-    // Near a Scenic Sit & Contemplate Pier or River Bench
+    // Near a Scenic Sit & Contemplate Pier or River Bench (suppressed while auto-walking to a deed such as Build Wisdom Bridge)
     this._nearbySeat = null;
-    for (const seat of (window.GAME_DATA.SCENIC_SEATS || [])) {
-      if (Math.hypot(pPos.x - seat.x, pPos.z - seat.z) < 3.6) {
-        this._nearbySeat = seat;
-        const alreadySeated = this.seatedScenic && this.seatedScenic.id === seat.id;
-        const seatName = this.dField(seat, 'name', 'zhName');
-        promptEl.style.display = 'flex';
-        promptEl.innerHTML = `
-          <div class="quest-box-1" style="padding:10px 14px;">
-            <div class="talk-portrait-col"><div class="talk-avatar-frame">${seat.emoji}</div><div class="talk-speaker-badge">${seatName}</div></div>
-            <div class="talk-bubble-body">
-              <div class="box-title">${alreadySeated ? this.t('"Breathe gently and enjoy the quiet waters and mountain breeze."', '“调匀呼吸，静赏池水清风与白花禅意。”') : this.t(`"A quiet meditation seat awaits at ${seatName}."`, `“${seatName} 备有清净禅座，可供静坐小憩。”`)}</div>
+    if (!this._walkingDeedTargetId) {
+      for (const seat of (window.GAME_DATA.SCENIC_SEATS || [])) {
+        if (Math.hypot(pPos.x - seat.x, pPos.z - seat.z) < 2.6) {
+          this._nearbySeat = seat;
+          const alreadySeated = this.seatedScenic && this.seatedScenic.id === seat.id;
+          const seatName = this.dField(seat, 'name', 'zhName');
+          promptEl.style.display = 'flex';
+          promptEl.innerHTML = `
+            <div class="quest-box-1" style="padding:10px 14px;">
+              <div class="talk-portrait-col"><div class="talk-avatar-frame">${seat.emoji}</div><div class="talk-speaker-badge">${seatName}</div></div>
+              <div class="talk-bubble-body">
+                <div class="box-title">${alreadySeated ? this.t('"Breathe gently and enjoy the quiet waters and mountain breeze."', '“调匀呼吸，静赏池水清风与白花禅意。”') : this.t(`"A quiet meditation seat awaits at ${seatName}."`, `“${seatName} 备有清净禅座，可供静坐小憩。”`)}</div>
+              </div>
             </div>
-          </div>
-          <div class="quest-box-2">
-            <button class="quest-enter-btn" onclick="window.game.toggleSitScenicSpot(window.GAME_DATA.SCENIC_SEATS.find(s => s.id === '${seat.id}'))">
-              <span>${alreadySeated ? this.t('🚶 Stand Up', '🚶 起身离座') : this.t('🧘 Sit & Enjoy View', '🧘 花下禅坐静休')}</span>
-              <span class="enter-key-badge">⏎ E</span>
-            </button>
-          </div>
-        `;
-        return;
+            <div class="quest-box-2">
+              <button class="quest-enter-btn" onclick="window.game.toggleSitScenicSpot(window.GAME_DATA.SCENIC_SEATS.find(s => s.id === '${seat.id}'))">
+                <span>${alreadySeated ? this.t('🚶 Stand Up', '🚶 起身离座') : this.t('🧘 Sit & Enjoy View', '🧘 花下禅坐静休')}</span>
+                <span class="enter-key-badge">⏎ E</span>
+              </button>
+            </div>
+          `;
+          return;
+        }
       }
     }
 
@@ -8815,22 +8853,23 @@ class BuddhistPracticeGame {
     }
   }
 
-  // -------------------- MULTI-USER REALTIME PRESENCE (DISABLED FOR NOW) --------------------
+  // -------------------- MULTI-USER REALTIME PRESENCE (.COM + LOCAL) --------------------
   initMultiplayer() {
-    this._multiplayerEnabled = false;
+    this._multiplayerEnabled = true;
     this.mpClientId = `p_${Math.random().toString(36).slice(2, 10)}`;
     this.remotePlayers = {};
     this._seenMpEvents = new Set();
     this._mpBroadcastTimer = 0;
     this._mpPollTimer = 0;
-    this._presenceApiSupported = false;
+    this._presenceApiSupported = window.location.protocol.startsWith('http')
+      && !window.location.hostname.endsWith('.github.io');
     this._mqttRxBuf = new Uint8Array(0);
     this._mqttReady = false;
     this._mqttKeepaliveTimer = 0;
+    this._mqttReconnectTimer = null;
 
     const pill = document.getElementById('online-pilgrims-pill');
-    if (pill) pill.style.display = 'none';
-    if (!this._multiplayerEnabled) return;
+    if (pill) pill.style.display = '';
 
     const hostKey = (window.location.host || 'local').replace(/[^a-zA-Z0-9_-]/g, '_');
     this._mqttTopic = `shuiyuetu/sanctuary/${hostKey}/presence`;
@@ -8885,17 +8924,28 @@ class BuddhistPracticeGame {
   }
 
   _connectMqttSocket(urls, idx) {
-    if (!urls || idx >= urls.length || typeof WebSocket === 'undefined') return;
+    if (!this._multiplayerEnabled || !urls || !urls.length || typeof WebSocket === 'undefined') return;
     if (window.location.protocol === 'file:') return;
+    if (this._mqttReconnectTimer) {
+      clearTimeout(this._mqttReconnectTimer);
+      this._mqttReconnectTimer = null;
+    }
     try {
-      const ws = new WebSocket(urls[idx], 'mqtt');
+      const safeIdx = idx % urls.length;
+      const ws = new WebSocket(urls[safeIdx], 'mqtt');
       ws.binaryType = 'arraybuffer';
       this._mqttWs = ws;
+      this._mqttRxBuf = new Uint8Array(0);
       this._mqttReady = false;
-      let opened = false;
+      let connacked = false;
+
+      const connackTimer = setTimeout(() => {
+        if (!connacked && this._mqttWs === ws) {
+          try { ws.close(); } catch (e) { /* ignore */ }
+        }
+      }, 5000);
 
       ws.onopen = () => {
-        opened = true;
         const vh = new Uint8Array([0x00, 0x04, 77, 81, 84, 84, 0x04, 0x02, 0x00, 60]);
         const cid = this._mqttEncodeStr(`syt_${this.mpClientId}`);
         ws.send(this._mqttBuildPacket(0x10, [vh, cid]));
@@ -8931,6 +8981,8 @@ class BuddhistPracticeGame {
           this._mqttRxBuf = this._mqttRxBuf.slice(pos + remLen);
 
           if (pktType === 2) {
+            connacked = true;
+            clearTimeout(connackTimer);
             this._mqttReady = true;
             const pid = new Uint8Array([0x00, 0x01]);
             const topicFilter = this._mqttEncodeStr(this._mqttTopic);
@@ -8955,10 +9007,13 @@ class BuddhistPracticeGame {
         this._mqttReady = false;
       };
       ws.onclose = () => {
+        clearTimeout(connackTimer);
         this._mqttReady = false;
-        if (!opened && idx + 1 < urls.length) {
-          this._connectMqttSocket(urls, idx + 1);
-        }
+        if (!this._multiplayerEnabled) return;
+        const delayMs = connacked ? 3500 : 1200;
+        this._mqttReconnectTimer = setTimeout(() => {
+          this._connectMqttSocket(urls, (safeIdx + 1) % urls.length);
+        }, delayMs);
       };
     } catch (e) {
       this._mqttReady = false;
@@ -9022,10 +9077,14 @@ class BuddhistPracticeGame {
       return;
     }
 
+    const rx = typeof msg.x === 'number' ? msg.x : 0;
+    const ryPos = typeof msg.y === 'number' ? msg.y : 0;
+    const rz = typeof msg.z === 'number' ? msg.z : 105;
+
     let rp = this.remotePlayers[msg.id];
     if (!rp) {
       const mesh = window.TempleModels3D.createCuteRedTibetanMonkParts(THREE);
-      mesh.position.set(msg.x || 0, msg.y || 0, msg.z || 105);
+      mesh.position.set(rx, ryPos, rz);
       this.scene.add(mesh);
       const labelPos = mesh.position.clone().add(new THREE.Vector3(0, 2.25, 0));
       const labelEl = this.addWorldLabel(`🧘 ${msg.name || '善信'}`, labelPos, msg.scene || 'public_temple');
@@ -9035,7 +9094,7 @@ class BuddhistPracticeGame {
         name: msg.name || '善信',
         mesh,
         parts: mesh.userData || {},
-        targetPos: new THREE.Vector3(msg.x || 0, msg.y || 0, msg.z || 105),
+        targetPos: new THREE.Vector3(rx, ryPos, rz),
         targetRotY: msg.ry || 0,
         scene: msg.scene || 'public_temple',
         pose: msg.pose || 'idle',
@@ -9046,9 +9105,10 @@ class BuddhistPracticeGame {
       };
       this.remotePlayers[msg.id] = rp;
       this.updateOnlinePilgrimsCount();
+      this.broadcastPresenceState(true);
     } else {
       rp.name = msg.name || rp.name;
-      rp.targetPos.set(msg.x || 0, msg.y || 0, msg.z || 0);
+      rp.targetPos.set(rx, ryPos, rz);
       rp.targetRotY = msg.ry || 0;
       rp.scene = msg.scene || 'public_temple';
       rp.pose = msg.pose || 'idle';

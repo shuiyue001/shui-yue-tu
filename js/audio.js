@@ -469,11 +469,12 @@ class TempleAudioEngine {
 
     try {
       window.speechSynthesis.cancel();
-      const preferZh = lang === 'zh';
+      const forceZhPrayer = skillId === 'wenshu' || skillId === 'changshou';
+      const preferZh = lang === 'zh' || forceZhPrayer;
       const zhVoice = preferZh ? this._pickGentleVoice(true) : null;
-      const useZhVoice = Boolean(preferZh && zhVoice);
+      const useZhVoice = Boolean(preferZh && (zhVoice || forceZhPrayer));
       const spokenText = useZhVoice ? textZh : textEn;
-      const voice = useZhVoice ? zhVoice : (this._pickGentleVoice(false) || this._preferredVoice);
+      const voice = useZhVoice ? (zhVoice || null) : (this._pickGentleVoice(false) || this._preferredVoice);
 
       const utter = new SpeechSynthesisUtterance(spokenText);
       if (voice) {
