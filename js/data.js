@@ -23,7 +23,7 @@ window.GAME_DATA = {
     return null;
   },
 
-  // East Wisdom Bridge across the separating East River (x in [25.5, 34.5], z in [1.2, 6.8])
+  // East Wisdom Bridge across the separating East River toward 文殊殿 (x in [25.5, 34.5], z in [1.2, 6.8])
   getWisdomBridgeHeightAt(x, z) {
     if (x >= 25.4 && x <= 34.6 && Math.abs(z - 4.0) <= 2.8) {
       const t = (x - 30.0) / 4.6;
@@ -32,40 +32,64 @@ window.GAME_DATA = {
     return null;
   },
 
-  // Smooth 3D Terrain Height Function for the Expanded Lush Misty Mountain Valley + East Mount Wutai
-  getTerrainHeight(x, z) {
-    // East River & Mount Wutai Summit Zone (to the right of the Prayer Hall, x >= 23, z in [-26, 46])
-    if (x >= 23.0 && z >= -26.0 && z <= 46.0) {
-      // Smooth blend along Z boundaries (z < -18 or z > 28) into hillside
-      const zOut = z < -18.0 ? Math.min(1, (-18.0 - z) / 8.0) : (z > 28.0 ? Math.min(1, (z - 28.0) / 18.0) : 0);
+  // North-East Seven-Buddha Bridge across the East River before ascending 七佛山 (x in [25.5, 34.5], z in [-39.8, -34.2])
+  getSevenBuddhaBridgeHeightAt(x, z) {
+    if (x >= 25.4 && x <= 34.6 && Math.abs(z - (-37.0)) <= 2.8) {
+      const t = (x - 30.0) / 4.6;
+      return 0.22 + 1.38 * Math.max(0, 1 - t * t);
+    }
+    return null;
+  },
 
-      // West bank before river (x in [23, 26.8]) -> level courtyard east bank at y = 0
+  // Smooth 3D Terrain Height Function for the Expanded Lush Misty Mountain Valley + 七佛山 + 五台山文殊殿 + 长寿山
+  getTerrainHeight(x, z) {
+    // 0. Grand Fo Guang Shan–style 大雄宝殿 Plaza & North-East Approach to Seven-Buddha Bridge
+    if (x >= -25.2 && x <= 26.8 && z >= -46.0 && z <= 2.2) {
+      return 0;
+    }
+
+    // Back Alpine Slope behind Grand 大雄宝殿 (z < -46, x in [-26, 26.8])
+    if (x >= -26.0 && x <= 26.8 && z < -46.0) {
+      return Math.min(24.0, ((-46.0 - z) / 26.0) * 24.0);
+    }
+
+    // 1. East Twin Mountains across East River: 文殊山 (z ~ +4) & relocated 七佛山 (z ~ -37)
+    if (x >= 24.0 && z >= -58.0 && z <= 46.0) {
+      // Smooth blend along outer Z boundaries (z < -50 or z > 28) into alpine hillside
+      const zOut = z < -50.0 ? Math.min(1, (-50.0 - z) / 8.0) : (z > 28.0 ? Math.min(1, (z - 28.0) / 18.0) : 0);
+
+      // West bank before river (x in [24, 26.8]) -> level courtyard east bank at y = 0
       let eastH = 0;
       if (x >= 26.8 && x <= 33.2) {
-        // Separating East Riverbed carving along x = 30.0
+        // Separating East Riverbed carving along x = 30.0 (continuous past both bridges!)
         const distR = Math.abs(x - 30.0) / 3.2;
         eastH = -0.68 * (1 - distR * distR);
       } else if (x > 33.2 && x < 114.0) {
-        // Ascending Mount Wutai Terraced Slope rising smoothly from y = 0.1 at x=34 to y = 16.5 at x=114
+        // Ascending Mount Wutai & Seven-Buddha Twin Terraced Slopes rising smoothly from y = 0.1 at x=34 to y = 16.5 at x=114
         const t = Math.max(0, Math.min(1, (x - 34.0) / 80.0));
         eastH = 0.1 + t * 16.4;
+        // Subtle pine saddle ridge separating 七佛山 trail (z=-37) and 文殊山 trail (z=4) along mid-slope
+        if (z < -10.5 && z > -24.5 && x < 105.0) {
+          const midFactor = 1 - Math.abs(z - (-17.5)) / 7.0;
+          const xFactor = Math.sin(t * Math.PI);
+          eastH -= Math.max(0, midFactor) * xFactor * 1.9;
+        }
       } else if (x >= 114.0 && x <= 144.0) {
-        // Flat Mount Wutai Summit Plaza for 文殊殿
+        // Flat Twin Summit Plateaus (文殊殿 at z ~ +4 AND 七佛殿 at z ~ -37, both y = 16.5)
         eastH = 16.5;
       } else if (x > 144.0) {
-        // Snow-capped Alpine Ridge backing 文殊殿
+        // Snow-capped Alpine Ridge backing 文殊殿 & 七佛殿
         eastH = 16.5 + Math.min(26.0, ((x - 144.0) / 28.0) * 26.0);
       }
 
-      // Flatten 7 White Stupa circular terraces along the slope so Stupas & circling player stay 100% level!
-      if (this.WENSHU_STUPAS) {
-        for (const st of this.WENSHU_STUPAS) {
-          const dSt = Math.hypot(x - st.x, z - st.z);
-          if (dSt <= 5.6) {
-            const stBaseH = 0.1 + Math.max(0, Math.min(1, (st.x - 34.0) / 80.0)) * 16.4;
-            const blend = dSt <= 4.0 ? 1 : 1 - (dSt - 4.0) / 1.6;
-            eastH = eastH * (1 - blend) + stBaseH * blend;
-          }
+      // Flatten 7 White Stupa circular terraces & relocated East/NE trail Good Deed terraces!
+      const flatSpots = [...(this.WENSHU_STUPAS || []), { x: 50.5, z: 14.5 }, { x: 85.0, z: -10.0 }, { x: 56.0, z: -29.5 }];
+      for (const st of flatSpots) {
+        const dSt = Math.hypot(x - st.x, z - st.z);
+        if (dSt <= 5.6) {
+          const stBaseH = 0.1 + Math.max(0, Math.min(1, (st.x - 34.0) / 80.0)) * 16.4;
+          const blend = dSt <= 4.0 ? 1 : 1 - (dSt - 4.0) / 1.6;
+          eastH = eastH * (1 - blend) + stBaseH * blend;
         }
       }
 
@@ -76,21 +100,21 @@ window.GAME_DATA = {
       return eastH;
     }
 
-    // West Longevity Mountain, 3 Flower Gardens, 3 Lotus Ponds & Open 长寿殿 Summit Plaza (x <= -20, z in [-48, 58])
-    if (x <= -20.0 && z >= -48.0 && z <= 58.0) {
+    // 2. West Longevity Mountain, 3 Flower Gardens, 4 Lotus Ponds & Open 长寿殿 Summit Plaza (x <= -24, z in [-48, 58])
+    if (x <= -24.0 && z >= -48.0 && z <= 58.0) {
       let westH = 0;
-      if (x > -24.0) {
+      if (x > -26.0) {
         // Flat West courtyard transition bank at y = 0 (keeping front river moat along z in [10.4, 16.6])
         westH = 0;
-        if (x > -23.5 && z >= 10.4 && z <= 16.6) {
+        if (z >= 10.4 && z <= 16.6) {
           const dz = Math.abs(z - 13.5);
           if (dz < 2.9) {
             westH -= 0.58 * (1 - Math.pow(dz / 2.9, 2));
           }
         }
       } else if (x > -78.0) {
-        // Ascending West Longevity Mountain Slope rising smoothly from y = 0.1 at x=-24 to y = 16.5 at x=-78
-        const t = Math.max(0, Math.min(1, (-24.0 - x) / 54.0));
+        // Ascending West Longevity Mountain Slope rising smoothly from y = 0.1 at x=-26 to y = 16.5 at x=-78
+        const t = Math.max(0, Math.min(1, (-26.0 - x) / 52.0));
         westH = 0.1 + t * 16.4;
       } else if (x >= -136.0) {
         // Wide, open mountain-top summit plaza surrounding 长寿殿 at y = 16.5
@@ -100,12 +124,17 @@ window.GAME_DATA = {
         westH = 16.5 + Math.min(20.0, ((-136.0 - x) / 30.0) * 20.0);
       }
 
-      // Flatten level circular terraces along the climb so all 3 Flower Gardens & 3 Lotus Ponds sit 100% level!
-      const stations = [...(this.CHANGSHOU_FLOWER_GARDENS || []), ...(this.CHANGSHOU_LOTUS_PONDS || [])];
+      // Flatten level circular terraces along the climb so Gardens, Lotus Ponds & West Trail Deeds sit 100% level!
+      const stations = [
+        ...(this.CHANGSHOU_FLOWER_GARDENS || []),
+        ...(this.CHANGSHOU_LOTUS_PONDS || []),
+        { x: -39.0, z: 18.0 },
+        { x: -57.0, z: 18.0 }
+      ];
       for (const st of stations) {
         const dSt = Math.hypot(x - st.x, z - st.z);
         if (dSt <= 5.8) {
-          const stBaseH = 0.1 + Math.max(0, Math.min(1, (-24.0 - st.x) / 54.0)) * 16.4;
+          const stBaseH = 0.1 + Math.max(0, Math.min(1, (-26.0 - st.x) / 52.0)) * 16.4;
           const blend = dSt <= 4.2 ? 1 : 1 - (dSt - 4.2) / 1.6;
           westH = westH * (1 - blend) + stBaseH * blend;
         }
@@ -171,15 +200,18 @@ window.GAME_DATA = {
     return naturalH;
   },
 
-  // Walkable surface height including Temple Hall floor, Curved Red Arched Bridge, Wisdom Bridge, 长寿殿 & 文殊殿
+  // Walkable surface height including 大雄宝殿 floor, Curved Red Arched Bridge, Wisdom Bridge, Seven-Buddha Bridge, 长寿殿, 文殊殿 & relocated 七佛殿
   getSurfaceHeightAt(x, z) {
-    if (Math.abs(x) < 17.5 && z < 0.5) {
-      return 0.35;
+    if (Math.abs(x) < 24.0 && z >= -39.0 && z < 0.5) {
+      return 0.41;
     }
     if (x >= -105.5 && x <= -86.6 && z >= -8.2 && z <= 16.2) {
       return 16.92;
     }
     if (x >= 116.0 && x <= 134.0 && z >= -8.0 && z <= 16.0) {
+      return 16.82;
+    }
+    if (x >= 115.0 && x <= 135.5 && z >= -51.0 && z <= -23.0) {
       return 16.82;
     }
     if (this.WENSHU_STUPAS && x > 33.0 && x < 114.0) {
@@ -198,6 +230,12 @@ window.GAME_DATA = {
       const wbY = this.getWisdomBridgeHeightAt(x, z);
       if (wbY !== null) {
         return Math.max(wbY, this.getTerrainHeight(x, z));
+      }
+    }
+    if (window.game && window.game.state && window.game.state.completedDeeds && window.game.state.completedDeeds['build_seven_buddha_bridge']) {
+      const qbY = this.getSevenBuddhaBridgeHeightAt(x, z);
+      if (qbY !== null) {
+        return Math.max(qbY, this.getTerrainHeight(x, z));
       }
     }
     return this.getTerrainHeight(x, z);
@@ -494,71 +532,71 @@ window.GAME_DATA = {
       zhCelebrationMsg: '👋 父母欢喜祝福你平安下山礼佛修学！(+2 功德)'
     },
 
-    // --- MOUNTAIN DESCENT QUESTS ALONG THE RIVER VALLEY ---
+    // --- GOOD DEEDS DISTRIBUTED ACROSS ALL FOUR MOUNTAIN TRAILS ---
     {
       id: 'save_animals',
-      title: '5. Rescue Trapped Deer',
-      zhTitle: '5. 救护受困小鹿',
+      title: '5. Rescue Trapped Deer (Road to 文殊殿)',
+      zhTitle: '5. 救护受困小鹿（文殊殿途中）',
       emoji: '🦌',
       speakerEmoji: '🦌',
       speakerImg: 'assets/cute_deer.png',
       points: 2,
-      pos: { x: 14.0, z: 84.0 },
-      landmarkName: 'Upper Pine Woods',
-      zhLandmarkName: '上山松林',
+      pos: { x: 50.5, z: 14.5 },
+      landmarkName: 'Wutai Slope Pine Terrace',
+      zhLandmarkName: '文殊山道松林',
       npcName: 'Little Spotted Deer',
       zhNpcName: '梅花小鹿',
-      hintText: 'Upper Pine Woods (Right)',
-      zhHintText: '上山松林 (右侧)',
-      taskBoxText: '"Help! Help! I am locked inside this wooden cage and cannot get back to my forest family. Can you open the latch for me?"',
-      zhTaskBoxText: '“救命呀！我被困在木笼子里回不了森林的家了，能帮我打开门闩放生吗？”',
+      hintText: 'On the road up to 文殊殿 (Right side)',
+      zhHintText: '登上文殊殿的半山松林',
+      taskBoxText: '"Help! Help! I am locked inside this wooden cage on the mountain slope to Manjushri Hall. Can you open the latch for me?"',
+      zhTaskBoxText: '“救命呀！我被困在文殊山道旁的木笼子里了，能帮我打开门闩放生吗？”',
       virtueLesson: 'Every living creature loves freedom and wants to be safe.',
       zhVirtueLesson: '一切众生皆惜生命、欢喜自在安稳。',
       actionButtonLabel: '🔓 Rescue the Deer',
       zhActionButtonLabel: '🔓 打开笼门救小鹿',
-      celebrationMsg: '🦌 The rescued deer leaps out of the cage and joins you as a friend! (+2 VP)',
-      zhCelebrationMsg: '🦌 小鹿欢快地跃出木笼，成为你的林中好友！(+2 功德)'
+      celebrationMsg: '🦌 The rescued deer leaps out of the cage and joins you toward Manjushri Hall! (+2 VP)',
+      zhCelebrationMsg: '🦌 小鹿欢快跃出木笼，成为你登山朝圣的好友！(+2 功德)'
     },
     {
       id: 'stop_hunter',
-      title: '6. Save Animal from Hunter',
-      zhTitle: '6. 护生劝止猎人',
+      title: '6. Free Captured Wildlife (Road to 七佛殿)',
+      zhTitle: '6. 护生劝止猎人并放生（七佛殿途中）',
       emoji: '🏹',
       speakerEmoji: '🦊',
       speakerImg: 'assets/cute_fox.png',
       points: 2,
-      pos: { x: -16.5, z: 73.0 },
-      landmarkName: 'Western Forest Grove',
-      zhLandmarkName: '西侧幽林',
+      pos: { x: 56.0, z: -29.5 },
+      landmarkName: 'Seven-Buddha Slope Grove',
+      zhLandmarkName: '七佛山道放生林',
       npcName: 'Cute Little Fox',
       zhNpcName: '可爱小狐狸',
-      hintText: 'Western Forest Grove (Left)',
-      zhHintText: '西侧幽林 (左侧)',
-      taskBoxText: '"Oh no! That hunter is aiming his bow and net at me! Please ask him to be kind and spare my life!"',
-      zhTaskBoxText: '“不好啦！猎人正用弓箭和渔网对着我，请快劝他慈悲放我一条生路吧！”',
-      virtueLesson: 'Protecting animals from harm brings peace and long life.',
-      zhVirtueLesson: '戒杀护生，感召祥和与健康长寿。',
-      actionButtonLabel: '🛡️ Save Animal from Hunter',
-      zhActionButtonLabel: '🛡️ 慈悲劝止猎人',
-      celebrationMsg: '🏹 You gently stopped the hunter! He lowers his bow and the little fox follows you! (+2 VP)',
-      zhCelebrationMsg: '🏹 猎人听劝放下弓箭，小狐狸欢喜随行！(+2 功德)'
+      hintText: 'On the mountain path up to 七佛殿',
+      zhHintText: '登上七佛殿的山林坡道',
+      taskBoxText: '"Oh no! That hunter is aiming his bow and net at me on the Seven-Buddha mountain path! Please ask him to be kind and set me free!"',
+      zhTaskBoxText: '“不好啦！猎人正用弓箭和网对着我，请快劝他慈悲护生、放我回七佛山林吧！”',
+      virtueLesson: 'Protecting and releasing animals brings peace and long life.',
+      zhVirtueLesson: '戒杀放生、慈护群生，感召祥和与健康长寿。',
+      actionButtonLabel: '🛡️ Stop Hunter & Free Wildlife',
+      zhActionButtonLabel: '🛡️ 慈悲劝猎放生',
+      celebrationMsg: '🏹 You gently persuaded the hunter! Wildlife is freed and the little fox follows you! (+2 VP)',
+      zhCelebrationMsg: '🏹 猎人听劝放下弓箭放生万物，小狐狸欢喜随行！(+2 功德)'
     },
     {
       id: 'cover_rain',
-      title: '7. Cover Rain for Animals',
-      zhTitle: '7. 为小动物撑伞遮雨',
+      title: '7. Cover Rain for Animals (Road to 文殊殿)',
+      zhTitle: '7. 为小动物撑伞遮雨（文殊殿途中）',
       emoji: '☔',
       speakerEmoji: '🐇',
       speakerImg: 'assets/cute_bunny.png',
       points: 2,
-      pos: { x: 15.0, z: 62.0 },
-      landmarkName: 'Rainy Mountain Ledge',
-      zhLandmarkName: '烟雨山台',
+      pos: { x: 85.0, z: -10.0 },
+      landmarkName: 'Misty Wutai Ledge',
+      zhLandmarkName: '五台烟雨山台',
       npcName: 'Fluffy Little Bunnies',
       zhNpcName: '毛茸茸小白兔',
-      hintText: 'Rainy Mountain Ledge (Right)',
-      zhHintText: '烟雨山台 (右侧)',
-      taskBoxText: '"Brrr! The mountain rain is so cold and our soft fur is soaked! Could you open that big lotus umbrella to shelter us?"',
+      hintText: 'Upper road to 文殊殿 (Left ridge)',
+      zhHintText: '文殊殿高处山道',
+      taskBoxText: '"Brrr! The mountain rain is so cold on our way up Mount Wutai! Could you open that big lotus umbrella to shelter us?"',
       zhTaskBoxText: '“好冷啊！山雨把我们的毛都淋湿了，能帮我们撑开那把大莲花伞遮雨吗？”',
       virtueLesson: 'Sheltering small and weak beings shows true compassion.',
       zhVirtueLesson: '庇护弱小众生，即是真诚慈悲心的流露。',
@@ -569,54 +607,54 @@ window.GAME_DATA = {
     },
     {
       id: 'help_farmers',
-      title: '8. Help Farmer Farm Land',
-      zhTitle: '8. 助农耕种麦田',
+      title: '8. Help Farmer Farm Land (Road to 长寿殿)',
+      zhTitle: '8. 助农耕种麦田（长寿佛殿途中）',
       emoji: '🌾',
       speakerEmoji: '🧑🌾',
       points: 2,
-      pos: { x: -19.5, z: 52.0 },
-      landmarkName: 'Tree-Side Farmland',
-      zhLandmarkName: '林畔良田',
+      pos: { x: -39.0, z: 18.0 },
+      landmarkName: 'Longevity Valley Farmland',
+      zhLandmarkName: '长寿山谷良田',
       npcName: 'Uncle Lin the Farmer',
       zhNpcName: '农夫林伯伯',
-      hintText: 'Tree-Side Farmland (Left by Trees)',
-      zhHintText: '林畔良田 (左侧林边)',
-      taskBoxText: '"Phew, my back is sore and this field by the trees is still dry and unplowed. Could you help me farm the land and plant seeds?"',
-      zhTaskBoxText: '“哎呀腰好酸，林边这块田还没翻土播种呢，能帮伯伯一起耕田撒种吗？”',
+      hintText: 'West trail toward 长寿佛殿 (Left valley)',
+      zhHintText: '前往长寿佛殿的西山良田',
+      taskBoxText: '"Phew, my back is sore on this West hillside toward Longevity Hall. Could you help me farm the land and plant seeds?"',
+      zhTaskBoxText: '“哎呀腰好酸，长寿山谷这块田还没翻土播种呢，能帮伯伯一起耕田撒种吗？”',
       virtueLesson: 'Helping hardworking people lightens their burden and grows good harvests.',
       zhVirtueLesson: '随喜助人劳作，共结丰收善果。',
       actionButtonLabel: '🌾 Help Farmer Farm Land',
       zhActionButtonLabel: '🌾 帮伯伯耕田播种',
-      celebrationMsg: '🌾 Golden wheat and fresh crops sprout across the tree-side farmland! (+2 VP)',
-      zhCelebrationMsg: '🌾 金黄麦苗与翠绿庄稼在田间欣欣向荣！(+2 功德)'
+      celebrationMsg: '🌾 Golden wheat and fresh crops sprout along the Longevity Valley path! (+2 VP)',
+      zhCelebrationMsg: '🌾 金黄麦苗与翠绿庄稼在长寿山道欣欣向荣！(+2 功德)'
     },
     {
       id: 'water_plants',
-      title: '9. Water Thirsty Plants',
-      zhTitle: '9. 浇灌干渴花草',
+      title: '9. Water Thirsty Plants (Road to 长寿殿)',
+      zhTitle: '9. 浇灌干渴花草（长寿佛殿途中）',
       emoji: '💧',
       speakerEmoji: '🌱',
       points: 2,
-      pos: { x: 15.5, z: 44.0 },
-      landmarkName: 'Mountain Spring Garden',
-      zhLandmarkName: '山泉花圃',
+      pos: { x: -57.0, z: 18.0 },
+      landmarkName: 'Longevity Spring Garden',
+      zhLandmarkName: '长寿山泉花圃',
       npcName: 'Drooping Little Flowers',
       zhNpcName: '干渴的小花们',
-      hintText: 'Mountain Spring Garden (Right)',
-      zhHintText: '山泉花圃 (右侧)',
-      taskBoxText: '"We are so thirsty in the sun! Please scoop some cool water from the stone well so our leaves and petals can bloom again."',
-      zhTaskBoxText: '“太阳晒得我们好口渴呀！请舀一瓢清凉山泉水浇灌，让我们重新绽放吧！”',
+      hintText: 'Upper West trail to 长寿佛殿',
+      zhHintText: '长寿山高处泉水花圃',
+      taskBoxText: '"We are so thirsty on the climb up Longevity Mountain! Please scoop cool spring water so our leaves and petals can bloom again."',
+      zhTaskBoxText: '“长寿山坡晒得我们好口渴呀！请舀一瓢清凉山泉水浇灌，让我们重新绽放吧！”',
       virtueLesson: 'Caring for plants and nature keeps the whole world green and happy.',
       zhVirtueLesson: '爱护草木生机，大地常保青翠欢喜。',
       actionButtonLabel: '💧 Water the Plants',
       zhActionButtonLabel: '💧 舀山泉浇花木',
-      celebrationMsg: '💧 Fresh spring water revives the saplings and colorful flowers bloom! (+2 VP)',
-      zhCelebrationMsg: '💧 清泉滋润下，树苗与百花焕发生机灿烂绽放！(+2 功德)'
+      celebrationMsg: '💧 Fresh spring water revives the saplings and colorful flowers along the climb! (+2 VP)',
+      zhCelebrationMsg: '💧 清泉滋润下，树苗与百花在长寿山道灿烂绽放！(+2 功德)'
     },
     {
       id: 'cross_river',
-      title: '10. Help People Cross River',
-      zhTitle: '10. 架桥助人过河',
+      title: '10. Help People Cross River (To 大雄宝殿)',
+      zhTitle: '10. 架桥助人过河（通往大雄宝殿）',
       emoji: '🌉',
       speakerEmoji: '👴🏼',
       points: 2,
@@ -625,33 +663,33 @@ window.GAME_DATA = {
       zhLandmarkName: '幽谷溪渡口',
       npcName: 'Grandpa & Little Child',
       zhNpcName: '老爷爷与小朋友',
-      hintText: 'Valley River Crossing (Center)',
-      zhHintText: '幽谷溪渡口 (中路)',
-      taskBoxText: '"The mountain river is flowing too fast for us to step across! Can you lay down the wooden bridge planks to help us cross?"',
-      zhTaskBoxText: '“溪水太急过不去啦！能帮忙铺好木桥板，扶我们安全渡过对岸吗？”',
+      hintText: 'Center mountain trail to 大雄宝殿',
+      zhHintText: '中路山溪渡口（前往大雄宝殿）',
+      taskBoxText: '"The mountain river is flowing too fast for us to step across on the way to the Grand Hall! Can you lay the bridge planks?"',
+      zhTaskBoxText: '“溪水太急过不去啦！能帮忙铺好木桥板，扶我们安全前往大雄宝殿吗？”',
       virtueLesson: 'Building bridges for others helps everyone reach safety together.',
       zhVirtueLesson: '铺桥修路利人行，共赴平安彼岸。',
       actionButtonLabel: '🌉 Help People Cross River',
       zhActionButtonLabel: '🌉 铺桥助人渡河',
-      celebrationMsg: '🌉 A sturdy wooden bridge spans the river so everyone can cross safely! (+2 VP)',
-      zhCelebrationMsg: '🌉 坚固木桥架通溪流，行人都能平安渡河啦！(+2 功德)'
+      celebrationMsg: '🌉 A sturdy wooden bridge spans the river toward the Grand Mahavira Hall! (+2 VP)',
+      zhCelebrationMsg: '🌉 坚固木桥架通溪流，众人都能平安前往大雄宝殿啦！(+2 功德)'
     },
     {
       id: 'cook_hungry',
-      title: '11. Feed the Hungry & Poor',
-      zhTitle: '11. 施粥济助饥人',
+      title: '11. Feed the Hungry & Poor (To 大雄宝殿)',
+      zhTitle: '11. 施粥济助饥人（通往大雄宝殿）',
       emoji: '🍲',
       speakerEmoji: '🥣',
       points: 2,
-      pos: { x: -14.5, z: 20.5 },
-      landmarkName: 'Valley Charity Kitchen',
-      zhLandmarkName: '山谷施粥棚',
+      pos: { x: -14.5, z: 54.0 },
+      landmarkName: 'Mountain Trail Charity Kitchen',
+      zhLandmarkName: '山道施粥棚',
       npcName: 'Hungry Travelers',
       zhNpcName: '饥饿旅人',
-      hintText: 'Valley Charity Kitchen (Before Bridge Left)',
-      zhHintText: '山谷施粥棚 (红桥前左侧)',
-      taskBoxText: '"We walked all day and have no food left. Could you share some warm vegetarian porridge from the big pot with us?"',
-      zhTaskBoxText: '“我们走了一天路都没吃东西，能分我们一碗热腾腾的吉祥素粥吗？”',
+      hintText: 'Upper mountain trail to 大雄宝殿 (Left)',
+      zhHintText: '前往大雄宝殿的山道左侧',
+      taskBoxText: '"We walked down the mountain all day and have no food left. Could you share some warm vegetarian porridge from the pot?"',
+      zhTaskBoxText: '“我们赶了一天山路都没吃东西，能分我们一碗热腾腾的吉祥素粥吗？”',
       virtueLesson: 'Sharing food with hungry people fills the world with warmth.',
       zhVirtueLesson: '施食济贫，让世间处处洋溢温暖与欢喜。',
       actionButtonLabel: '🍲 Share Warm Food',
@@ -661,8 +699,8 @@ window.GAME_DATA = {
     },
     {
       id: 'good_wishes',
-      title: '12. Make Wishes for Friends',
-      zhTitle: '12. 菩提树下发善愿',
+      title: '12. Make Wishes at Bodhi Tree (Outside 大雄宝殿)',
+      zhTitle: '12. 菩提树下发善愿（大雄宝殿前）',
       emoji: '🌟',
       speakerEmoji: '👧🏻',
       points: 2,
@@ -671,54 +709,54 @@ window.GAME_DATA = {
       zhLandmarkName: '菩提祈愿树',
       npcName: 'Friend Xiao An',
       zhNpcName: '小安善友',
-      hintText: 'Bodhi Wishing Tree (Before Bridge Right)',
-      zhHintText: '菩提祈愿树 (红桥前右侧)',
-      taskBoxText: '"Look at the ancient Bodhi Tree! Let’s smile warmly and make a true wish that all our friends and family stay healthy and happy!"',
-      zhTaskBoxText: '“快看这棵古老的菩提树！让我们微笑挂上祈愿牌，祝福亲友平安康乐吧！”',
+      hintText: 'Bodhi Wishing Tree (Before 大雄宝殿 Bridge Right)',
+      zhHintText: '大雄宝殿前红桥右侧',
+      taskBoxText: '"Look at the ancient Bodhi Tree before the Grand Mahavira Hall! Let’s smile and make a true wish for all friends and beings!"',
+      zhTaskBoxText: '“快看大雄宝殿前的古老菩提树！让我们微笑挂上祈愿牌，祝福亲友众生平安康乐！”',
       virtueLesson: 'Wishing others happiness makes your own heart shine brightly.',
       zhVirtueLesson: '诚心祝愿众生安乐，自心亦如明灯发光。',
       actionButtonLabel: '🌟 Make Good Wishes',
       zhActionButtonLabel: '🌟 挂牌发善愿',
-      celebrationMsg: '🌟 Golden sky lanterns float upward as you wish your friends happiness! (+2 VP)',
+      celebrationMsg: '🌟 Golden sky lanterns float upward as you wish everyone happiness! (+2 VP)',
       zhCelebrationMsg: '🌟 金色祈愿牌闪耀祥光，祝愿随清风送达四方！(+2 功德)'
     },
     {
       id: 'clean_hall',
-      title: '13. Clean Temple Steps',
-      zhTitle: '13. 扫净佛殿石阶',
+      title: '13. Clean 大雄宝殿 Steps',
+      zhTitle: '13. 扫净大雄宝殿石阶',
       emoji: '🧹',
       speakerEmoji: '🧑‍🦲',
       points: 2,
-      pos: { x: -7.5, z: 7.0 },
-      landmarkName: 'Temple Stone Courtyard',
-      zhLandmarkName: '七佛寺前庭石阶',
+      pos: { x: -11.5, z: 6.5 },
+      landmarkName: 'Grand Hall Stone Courtyard',
+      zhLandmarkName: '大雄宝殿前庭石阶',
       npcName: 'Novice Sweeper Monk',
       zhNpcName: '扫地小师兄',
-      hintText: 'Temple Courtyard (Past Red Bridge)',
-      zhHintText: '寺院石阶前 (过红桥)',
-      taskBoxText: '"Welcome to the 7-Buddha Temple! Let’s sweep these fallen leaves off the courtyard steps to show respect to the Buddhas."',
-      zhTaskBoxText: '“欢迎来到七佛古寺！让我们把殿前石阶上的落叶扫干净，恭敬迎接礼佛吧。”',
+      hintText: 'Grand Mahavira Hall Courtyard (Past Red Bridge)',
+      zhHintText: '大雄宝殿石阶前（过红桥）',
+      taskBoxText: '"Welcome to the Grand Mahavira Hall (大雄宝殿)! Let’s sweep these fallen leaves clean before taking off our shoes to enter."',
+      zhTaskBoxText: '“欢迎来到宏伟的大雄宝殿！让我们先扫净石阶落叶，再欢喜脱鞋入殿礼佛吧。”',
       virtueLesson: 'Cleaning the temple sweeps away messy thoughts in our own mind.',
       zhVirtueLesson: '清扫殿阶尘垢，亦是涤净心中的烦恼尘埃。',
       actionButtonLabel: '🧹 Sweep Temple Steps',
       zhActionButtonLabel: '🧹 清扫殿前石阶',
-      celebrationMsg: '🧹 The stone courtyard is spotless! You are ready to enter the 7-Buddha Prayer Hall! (+2 VP)',
-      zhCelebrationMsg: '🧹 寺院石阶一尘不染，随时可以入殿礼敬七佛啦！(+2 功德)'
+      celebrationMsg: '🧹 The Grand Hall stone courtyard is spotless! Take off your shoes at the rack to enter! (+2 VP)',
+      zhCelebrationMsg: '🧹 宝殿石阶一尘不染！请在门口鞋架脱鞋，步入宏伟大雄宝殿礼佛！(+2 功德)'
     },
     {
       id: 'build_wisdom_bridge',
-      title: '14. Build Wisdom Bridge',
-      zhTitle: '14. 修建文殊智慧桥',
+      title: '14. Build Wisdom Bridge (To 文殊殿)',
+      zhTitle: '14. 修建文殊智慧桥（前往文殊殿）',
       emoji: '🌉',
       speakerEmoji: '👷',
       points: 5,
       pos: { x: 24.8, z: 4.0 },
       landmarkName: 'East River Bridge Site',
-      zhLandmarkName: '东溪智慧桥渡口',
+      zhLandmarkName: '东溪文殊智慧桥渡口',
       npcName: 'Bridge Master Lu',
       zhNpcName: '鲁班桥师',
-      hintText: 'East Riverbank (Right of Prayer Hall)',
-      zhHintText: '东溪岸边 (佛殿右侧)',
+      hintText: 'East Riverbank (Right of 大雄宝殿)',
+      zhHintText: '东溪岸边（大雄宝殿右侧）',
       taskBoxText: '"Across this river rises Mount Wutai and 文殊殿 (Manjushri Hall)! Help me lay the timber planks to build the Wisdom Bridge!"',
       zhTaskBoxText: '“渡过这条东溪便是清凉五台山与文殊殿！快来帮我铺设木桥，搭建智慧大桥吧！”',
       virtueLesson: 'Building bridges helps everyone cross toward wisdom together.',
@@ -727,6 +765,29 @@ window.GAME_DATA = {
       zhActionButtonLabel: '🌉 搭建智慧桥',
       celebrationMsg: '🌉 The Wisdom Bridge is built! Cross the river to circle the 7 White Stupas and visit 文殊殿! (+5 VP)',
       zhCelebrationMsg: '🌉 智慧桥落成！过桥依次绕行七座白塔，直上五台山文殊殿！(+5 功德)'
+    },
+    {
+      id: 'build_seven_buddha_bridge',
+      title: '15. Build Seven-Buddha Bridge (To 七佛殿)',
+      zhTitle: '15. 修建七佛山金莲桥（前往七佛殿）',
+      emoji: '⛩️',
+      speakerEmoji: '👷',
+      points: 5,
+      pos: { x: 24.8, z: -37.0 },
+      landmarkName: 'North-East Seven-Buddha Bridge Site',
+      zhLandmarkName: '七佛山金莲桥渡口',
+      npcName: 'Senior Bridge Carpenter',
+      zhNpcName: '古寺筑桥师',
+      hintText: 'North-East riverbank beside 大雄宝殿 (x=24.8, z=-37)',
+      zhHintText: '东北侧溪岸 · 七佛山下渡口（x=24.8, z=-37）',
+      taskBoxText: '"Just beside Mount Wutai rises Seven-Buddha Mountain (七佛山) where the 7 Buddhas of Antiquity reside! Help lay this Golden Lotus Bridge before ascending!"',
+      zhTaskBoxText: '“紧邻五台山脉的便是供奉七尊古佛的七佛山！快帮我架通这座金莲大桥，过桥登山参拜七佛殿！”',
+      virtueLesson: 'Bridging streams to reach ancient wisdom temples brings lasting peace.',
+      zhVirtueLesson: '架桥渡溪赴七佛净土，得大吉祥安稳功德。',
+      actionButtonLabel: '⛩️ Build Seven-Buddha Bridge',
+      zhActionButtonLabel: '⛩️ 修建七佛金莲桥',
+      celebrationMsg: '⛩️ The Seven-Buddha Bridge spans the stream! Ascend Seven-Buddha Mountain right beside 文殊殿! (+5 VP)',
+      zhCelebrationMsg: '⛩️ 七佛金莲桥圆满建成！请过桥拾级而上，参拜毗邻文殊殿的七佛殿！(+5 功德)'
     }
   ],
 
@@ -796,6 +857,80 @@ window.GAME_DATA = {
       detail: 'May every living being let go of fear and sadness and find true peace.',
       zhDetail: '愿一切有情众生放下忧悲恐惧，得大清净与安乐。'
     }
+  ],
+
+  // Grand 大雄宝殿 Sanctuary: Western Three Saints (西方三圣: 南无大势至菩萨, 南无阿弥陀佛, 南无观音菩萨)
+  DAXIONG_DATA: {
+    name: 'Grand Mahavira Hall · Western Three Saints (大雄宝殿 · 西方三圣)',
+    zhName: '大雄宝殿 · 西方三圣',
+    subtitle: 'Western Three Saints: Mahasthamaprapta · Amitabha Buddha · Guanyin Bodhisattva',
+    zhSubtitle: '西方三圣：南无大势至菩萨 · 南无阿弥陀佛 · 南无观音菩萨',
+    shrineImg: 'assets/western_three_saints.jpg'
+  },
+
+  THREE_BUDDHAS_DATA: [
+    {
+      index: 0,
+      id: 'dashizhi',
+      name: 'Mahasthamaprapta Bodhisattva (Left)',
+      cnName: '南无大势至菩萨（西方三圣左尊）',
+      shortCnName: '南无大势至菩萨',
+      img: 'assets/western_three_saints.jpg',
+      altarX: -7.65,
+      title: 'Bodhisattva of Great Strength & Wisdom Light (西方三圣 · 南无大势至菩萨)',
+      zhTitle: '西方三圣 · 南无大势至菩萨（智慧光明遍照）',
+      wishAndBenefit: 'May great wisdom light illuminate every step of your path, strengthening focus, courage, and mindful remembrance.',
+      zhWishAndBenefit: '祈愿智慧光明遍照身心，得大精进与正念安住，开启清净无碍大智慧！',
+      buddhaWish: 'He holds a blooming lotus and radiates pure wisdom light so all beings transcend confusion effortlessly.',
+      zhBuddhaWish: '以清净念佛智慧之光摄受众生，令一切有情离苦得乐、明心增慧。',
+      bowBenefit: 'Bowing to 南无大势至菩萨 awakens bright wisdom, focused strength, and steady peaceful mindfulness!'
+    },
+    {
+      index: 1,
+      id: 'amitabha',
+      name: 'Amitabha Buddha (Center)',
+      cnName: '南无阿弥陀佛（西方三圣中尊）',
+      shortCnName: '南无阿弥陀佛',
+      img: 'assets/western_three_saints.jpg',
+      altarX: 0.0,
+      title: 'Buddha of Infinite Light & Infinite Life (西方三圣 · 南无阿弥陀佛)',
+      zhTitle: '西方三圣 · 南无阿弥陀佛（无量光寿佛）',
+      wishAndBenefit: 'May your heart rest in boundless warmth, serene light, and infinite peace, welcoming all beings home.',
+      zhWishAndBenefit: '愿汝身心清净吉祥、光明无量、寿命无量，常行善法、究竟离苦得乐！',
+      buddhaWish: 'He extends His compassionate welcoming hand across golden lotus clouds to guide every sincere heart.',
+      zhBuddhaWish: '金身垂手接引十方众生，愿一切善信同生极乐清净光明世界。',
+      bowBenefit: 'Bowing to 南无阿弥陀佛 calms worries and fills your heart with warm, fearless serenity!'
+    },
+    {
+      index: 2,
+      id: 'guanyin',
+      name: 'Guanyin Bodhisattva (Right)',
+      cnName: '南无观音菩萨（西方三圣右尊 · 南无观世音菩萨）',
+      shortCnName: '南无观音菩萨',
+      img: 'assets/western_three_saints.jpg',
+      altarX: 7.65,
+      title: 'Bodhisattva of Great Compassion (西方三圣 · 南无观音菩萨)',
+      zhTitle: '西方三圣 · 南无观音菩萨（大慈大悲寻声救苦）',
+      wishAndBenefit: 'May gentle compassion fill your speech and actions, bringing safety, healing comfort, and harmony to family and friends.',
+      zhWishAndBenefit: '祈愿慈悲甘露遍洒人心，令一切众生平安康泰、柔和善良、所求顺遂！',
+      buddhaWish: 'She holds the pure nectar vase and willow branch to soothe every sorrow and protect all beings safely.',
+      zhBuddhaWish: '手持净瓶杨枝遍洒清凉甘露，大慈大悲寻声救苦、护佑世间吉祥安康。',
+      bowBenefit: 'Bowing to 南无观音菩萨 fills your heart with boundless kindness, safety, and gentle inner calm!'
+    }
+  ],
+
+  // 10 Blessing Wishes for 大雄宝殿 Left & Right Lamp-Offering Walls (2 VP each, stays lit 24 hours)
+  LAMP_WISHES: [
+    { id: 'world_peace', emoji: '🌍', zh: '世界和平', en: 'World Peace', zhDetail: '愿世界各地祥和安宁，干戈永息，众生同享和平净土。', detail: 'May the world dwell in lasting peace and harmony.' },
+    { id: 'kind_hearts', emoji: '💖', zh: '人心善良', en: 'Kind & Gentle Hearts', zhDetail: '愿世人内心柔和慈悲，常存善念，彼此关怀爱护。', detail: 'May all people cultivate warm kindness and pure virtue.' },
+    { id: 'liberation', emoji: '🪷', zh: '祈求解脱', en: 'Inner Liberation', zhDetail: '愿自心远离烦恼执着，开启解脱自在之光。', detail: 'Praying for inner freedom, clarity, and liberation from sorrow.' },
+    { id: 'grow_wisdom', emoji: '💡', zh: '祈求增长智慧', en: 'Grow in Wisdom', zhDetail: '愿破除无明暗蔽，学习通达明理，福慧日日增长。', detail: 'May bright Dharma wisdom shine clearly in every thought.' },
+    { id: 'all_liberation', emoji: '🌟', zh: '祈求大家解脱', en: 'Universal Liberation', zhDetail: '愿一切有情众生共沐佛光，离苦得乐，同得圆满解脱。', detail: 'Praying that every living being awakens and attains true peace.' },
+    { id: 'family_health', emoji: '💚', zh: '家人健康', en: 'Family Health', zhDetail: '愿父母亲友身体健康、延年益寿、免除一切病痛灾障。', detail: 'May parents and loved ones enjoy lasting health and strength.' },
+    { id: 'smart_children', emoji: '🌱', zh: '孩子聪明', en: 'Wise & Bright Children', zhDetail: '愿孩子们耳聪目明、纯善勤学、仁爱明理、健康成长。', detail: 'May children grow bright, diligent, kind-hearted, and wise.' },
+    { id: 'exam_100', emoji: '💯', zh: '考试100分', en: '100% Exam Success', zhDetail: '愿学业进步、沉着专注、文思泉涌，考试得心应手拿100分！', detail: 'Wishing calm focus, sharp memory, and 100% excellence on exams.' },
+    { id: 'smooth_job', emoji: '💼', zh: '找工作顺利', en: 'Smooth Job Search', zhDetail: '愿事业与求职遇良缘贵人，所行顺遂、安稳发展、发挥所长。', detail: 'Wishing smooth opportunities, good mentors, and fulfilling work.' },
+    { id: 'happy_harmony', emoji: '🏡', zh: '阖家吉祥平安', en: 'Family Joy & Safety', zhDetail: '愿家宅清净吉祥、出入平安、邻里和睦、万事如意圆满。', detail: 'May your home and community be filled with safety and harmony.' }
   ],
 
   // Traditional 7 Buddhas (Seven Buddhas of Antiquity) — Bilingual Simplified Chinese & English:

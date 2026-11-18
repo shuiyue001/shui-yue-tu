@@ -854,22 +854,28 @@ body, html {
   white-space: nowrap;
 }
 
-/* Live 7-Buddha, Manjushri & Offering Benefit Info Card (Enlarged & High-Contrast for Mobile Readability) */
+/* Live 7-Buddha, Manjushri, Offering & Lamp Wish Card — Floating Sleekly at Top-Center so Altar & Lamps stay 100% Clear! */
 #bow-blessing-banner {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
   pointer-events: auto;
   display: none;
-  width: 100%;
-  background: linear-gradient(135deg, #fffef8, #ffe9b3);
-  border: 3.5px solid #d4941c;
-  border-radius: 22px;
-  padding: 15px 20px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  width: min(92vw, 580px);
+  background: rgba(255, 252, 240, 0.94);
+  backdrop-filter: blur(8px);
+  border: 2.5px solid #d4941c;
+  border-radius: 16px;
+  padding: 10px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .bow-buddha-icon {
-  font-size: 38px;
+  font-size: 28px;
   flex-shrink: 0;
 }
 
@@ -878,24 +884,54 @@ body, html {
 }
 
 .bow-buddha-header {
-  font-size: 15.5px;
+  font-size: 13.5px;
   font-weight: 900;
   color: #8c231c;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .bow-buddha-wish {
-  font-size: 16px;
+  font-size: 13.5px;
   font-weight: 800;
   color: #3a1a04;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .bow-buddha-benefit {
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 900;
   color: #5a1c0a;
-  line-height: 1.42;
+  line-height: 1.35;
+}
+
+/* Slim Altar/Hall Prompt so Bottom Quest Bar Never Hides the 3D Offering Table */
+.quest-box-1.hall-slim-card {
+  flex: 0 1 600px;
+  max-width: 600px;
+  padding: 9px 14px;
+  border-radius: 16px;
+  border-width: 2.5px;
+  gap: 12px;
+  background: rgba(255, 252, 244, 0.92);
+  backdrop-filter: blur(6px);
+}
+.quest-box-1.hall-slim-card .box-title {
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 10px;
+}
+.quest-box-2.hall-slim-action {
+  flex: 0 1 240px;
+  min-width: 220px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border-width: 2.5px;
+  gap: 8px;
+}
+.quest-box-2.hall-slim-action .quest-enter-btn {
+  padding: 9px 12px;
+  font-size: 13.5px;
+  border-radius: 12px;
 }
 
 /* Collectible Sticker Grid (Game Designer Recommendation #3) */

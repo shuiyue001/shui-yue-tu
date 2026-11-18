@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>水月图</title>
-  <link rel="stylesheet" href="css/style.css?v=20261116b" />
+  <link rel="stylesheet" href="css/style.css?v=20261118" />
   <!-- Three.js 3D Engine & GLTFLoader for Custom 3D Models -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -69,7 +69,8 @@
       <div class="hud-card scene-tabs" id="top-nav-card">
         <button class="scene-tab active" id="tab-courtyard" title="返回起点 / Return to Start">⛰️ 起点</button>
         <button class="scene-tab" id="tab-stupa" title="七佛塔 / 7 Stupas">☸️ 七佛塔</button>
-        <button class="scene-tab locked" id="tab-prayer-hall">🔒 佛殿</button>
+        <button class="scene-tab locked" id="tab-prayer-hall" title="大雄宝殿 / Grand Mahavira Hall">🔒 大雄宝殿</button>
+        <button class="scene-tab locked" id="tab-qifo-hall" title="七佛殿 / Seven-Buddha Hall (Atop 7-Buddha Mountain)">🔒 七佛殿</button>
         <button class="scene-tab locked" id="tab-wenshu-hall" title="文殊殿 / Manjushri Hall">🔒 文殊殿</button>
         <button class="scene-tab" id="tab-changshou-hall" title="长寿殿 / Longevity Hall">🏺 长寿殿</button>
         <button class="hud-btn primary-red" id="hud-btn-qianfodian" tabindex="-1" title="修行技能与千佛殿 / Skills &amp; 千佛殿">🏮 技能·千佛</button>
@@ -159,13 +160,13 @@
     </div>
   </aside>
 
-  <!-- Bottom HUD: Big Talking Window + 7-Buddha Live Blessing Card + Prayer Hall 5-Action Selection Box -->
+  <!-- Top-Center Sleek Floating Blessing / Offering / Lamp Wish Card (Leaves Altar Table 100% Visible!) -->
+  <div id="bow-blessing-banner"></div>
+
+  <!-- Bottom HUD: Big Talking Window + Prayer Hall Action Selection Box -->
   <div id="bottom-hud">
     <!-- Big RPG Talking Window + Action Box (Outside in Mountain Valley) -->
     <div id="proximity-prompt"></div>
-
-    <!-- Live 7-Buddha Blessing Card (Shows each Buddha's Name, Wish & Benefit during the 25 Bows!) -->
-    <div id="bow-blessing-banner"></div>
 
     <!-- Prayer Hall Action Selection Box (Appears automatically when entering the Prayer Hall! Every action = +10 VP) -->
     <div id="meditation-mat-bar">
@@ -466,7 +467,20 @@
     </div>
   </div>
 
-  <!-- MODAL 13: Prayer Skills & 千佛殿 Capability Window (35 Buddhas + 8 Bodhisattvas) -->
+  <!-- MODAL 13: 大雄宝殿 Left & Right Lamp-Offering Wall Modal (点灯祈福 · 2 VP · 24h) -->
+  <div class="modal-backdrop hidden" id="lamp-lighting-modal">
+    <div class="modal-card" style="width:min(680px, 95vw); border:3px solid #d4941c;">
+      <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b45309); color:#fff8dc;">
+        <h2 id="lamp-modal-title" style="color:#ffd700;">🏮 大雄宝殿供灯祈福墙 (每次 2 功德 · 长明 24 小时)</h2>
+        <button class="modal-close" id="close-lamp-modal">✕</button>
+      </div>
+      <div class="modal-body" id="lamp-lighting-body" style="gap:12px;">
+        <!-- Populated dynamically with the 10 Blessing Wishes & Active Lit Lamps -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 14: Prayer Skills & 千佛殿 Capability Window (35 Buddhas + 8 Bodhisattvas) -->
   <div class="modal-backdrop hidden" id="skills-capability-modal">
     <div class="modal-card" style="width:min(820px, 95vw); border:3px solid #d4941c;">
       <div class="modal-header" style="background:linear-gradient(90deg, #7a1c1c, #b45309); color:#fff8dc;">
@@ -534,9 +548,9 @@
   </div>
 
   <!-- Game Scripts -->
-  <script src="js/data.js?v=20261116b"></script>
-  <script src="js/audio.js?v=20261116b"></script>
-  <script src="js/models3d.js?v=20261116b"></script>
-  <script src="js/game.js?v=20261116b"></script>
+  <script src="js/data.js?v=20261118"></script>
+  <script src="js/audio.js?v=20261118"></script>
+  <script src="js/models3d.js?v=20261118"></script>
+  <script src="js/game.js?v=20261118"></script>
 </body>
 </html>
