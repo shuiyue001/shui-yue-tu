@@ -6,6 +6,9 @@ class TempleAudioEngine {
     this.muted = false;
     this.voiceEnabled = true;
     this.ambientTimer = null;
+    this._mantraMusicPlaying = false;
+    this._bgmAudio = null;
+    this.bgmVolume = 0.20; // Slider level 0..1 (default 20% -> ~0.04 perceptual audio amplitude)
     this._lastSpokenText = '';
     this._preferredVoice = null;
     this._initVoiceSelection();
@@ -100,8 +103,9 @@ class TempleAudioEngine {
 
   toggleMute() {
     this.muted = !this.muted;
-    if (this.muted && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+    if (this.muted) {
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (this._mantraMusicPlaying) this.toggleMantraMusic(false);
     }
     return this.muted;
   }
@@ -397,6 +401,14 @@ class TempleAudioEngine {
         { freq: 523.25, delay: 1.02, dur: 0.40 },
         { freq: 440.00, delay: 1.38, dur: 0.42 },
         { freq: 392.00, delay: 1.74, dur: 0.72 }
+      ],
+      om_mani: [
+        { freq: 293.66, delay: 0.00, dur: 0.45 }, // Om
+        { freq: 369.99, delay: 0.38, dur: 0.38 }, // Ma
+        { freq: 440.00, delay: 0.72, dur: 0.38 }, // ni
+        { freq: 493.88, delay: 1.06, dur: 0.38 }, // Pad
+        { freq: 440.00, delay: 1.40, dur: 0.40 }, // me
+        { freq: 293.66, delay: 1.76, dur: 0.85 }  // Hum
       ]
     };
     const melody = patterns[skillId] || patterns.amitofo;
@@ -429,15 +441,31 @@ class TempleAudioEngine {
 
   // Pronounce Prayer Mantra aloud and invoke onComplete once both audio chant and speech finish
   pronouncePrayer(skillId, lang = 'zh', onComplete = null) {
-    const minDurations = { amitofo: 2200, wenshu: 2500, changshou: 2800 };
+    const minDurations = { amitofo: 2200, om_mani: 2500, wenshu: 2500, changshou: 2800 };
     const minDurMs = minDurations[skillId] || 2200;
 
     this.playPrayerSyllableChant(skillId);
 
     const skillMap = (window.GAME_DATA && window.GAME_DATA.PRAYER_SKILLS) || {};
     const info = skillMap[skillId] || {};
-    const textZh = info.spokenZh || (skillId === 'wenshu' ? '嗡 阿 喇 巴 札 那 谛' : skillId === 'changshou' ? '嗡 格热 阿耶 色德 吽舍，阿玛拉呢 则万德耶 索哈' : '南无阿弥陀佛');
-    const textEn = info.spokenEn || (skillId === 'wenshu' ? 'Om, Ah, Ra, Pa, Ca, Na, Dhih' : skillId === 'changshou' ? 'Om Guru Ayur Siddhi Hum Hrih, Ah ma ra ni, Ji van ti ye, Sva ha' : 'Nan mo, Ah mee to fo');
+    const textZh = info.spokenZh || (
+      skillId === 'om_mani'
+        ? '嗡 嘛 呢 呗 美 吽'
+        : skillId === 'wenshu'
+          ? '嗡 阿 喇 巴 札 那 谛'
+          : skillId === 'changshou'
+            ? '嗡 格热 阿耶 色德 吽舍，阿玛拉呢 则万德耶 索哈'
+            : '南无阿弥陀佛'
+    );
+    const textEn = info.spokenEn || (
+      skillId === 'om_mani'
+        ? 'Om, Ma ni, Pad me, Hum'
+        : skillId === 'wenshu'
+          ? 'Om, Ah, Ra, Pa, Ca, Na, Dhih'
+          : skillId === 'changshou'
+            ? 'Om Guru Ayur Siddhi Hum Hrih, Ah ma ra ni, Ji van ti ye, Sva ha'
+            : 'Nan mo, Ah mee to fo'
+    );
 
     let minTimerDone = false;
     let speechDone = false;
@@ -469,7 +497,7 @@ class TempleAudioEngine {
 
     try {
       window.speechSynthesis.cancel();
-      const forceZhPrayer = skillId === 'wenshu' || skillId === 'changshou';
+      const forceZhPrayer = skillId === 'wenshu' || skillId === 'changshou' || skillId === 'om_mani';
       const preferZh = lang === 'zh' || forceZhPrayer;
       const zhVoice = preferZh ? this._pickGentleVoice(true) : null;
       const useZhVoice = Boolean(preferZh && (zhVoice || forceZhPrayer));
@@ -645,6 +673,106 @@ class TempleAudioEngine {
     this._natureSource = noise;
     this._natureGain = gain;
     this._naturePlaying = true;
+    return true;
+  }
+
+  isMantraMusicPlaying() {
+    return !!this._mantraMusicPlaying;
+  }
+
+  _effectiveBgmGain(level) {
+    const v = Math.max(0, Math.min(1, Number(level)));
+    if (!Number.isFinite(v) || v <= 0.005) return 0;
+    // Quadratic perceptual curve so low slider levels (10%–35%) feel genuinely gentle and responsive
+    return Math.min(1, v * v);
+  }
+
+  setBgmVolume(vol) {
+    const v = Math.max(0, Math.min(1, Number(vol)));
+    if (!Number.isFinite(v)) return this.bgmVolume;
+    this.bgmVolume = v;
+    const effectiveVol = this._effectiveBgmGain(v);
+    if (this._bgmAudio) {
+      this._bgmAudio.volume = effectiveVol;
+      this._bgmAudio.muted = effectiveVol === 0;
+    }
+    return this.bgmVolume;
+  }
+
+  // Gentle Bodhi Breeze Chime when releasing a Bodhi Leaf Wish
+  playBodhiWishBreezeChime() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const notes = [587.33, 659.25, 783.99, 880.00, 1174.66, 1318.51];
+    notes.forEach((freq, idx) => {
+      const t = now + idx * 0.22;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(0.065, t + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 2.9);
+    });
+  }
+
+  // Gentle Sacred 梵音 Background Music (assets/fanyin_bgm.m4a)
+  toggleMantraMusic(forceState) {
+    const nextState = typeof forceState === 'boolean' ? forceState : !this._mantraMusicPlaying;
+
+    if (!nextState) {
+      this._mantraMusicPlaying = false;
+      if (this._bgmAudio) {
+        try {
+          this._bgmAudio.pause();
+        } catch (e) {}
+      }
+      return false;
+    }
+
+    if (this.muted) {
+      this._mantraMusicPlaying = false;
+      return false;
+    }
+
+    if (typeof Audio === 'undefined') {
+      this._mantraMusicPlaying = false;
+      return false;
+    }
+
+    if (!this._bgmAudio) {
+      const src = (window.INLINE_ASSETS && window.INLINE_ASSETS['assets/fanyin_bgm.m4a']) || 'assets/fanyin_bgm.m4a';
+      const audio = new Audio(src);
+      audio.loop = true;
+      audio.preload = 'auto';
+      const eff = this._effectiveBgmGain(this.bgmVolume);
+      audio.volume = eff;
+      audio.muted = eff === 0;
+      this._bgmAudio = audio;
+    }
+
+    this._mantraMusicPlaying = true;
+    try {
+      const playPromise = this._bgmAudio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {
+          this._mantraMusicPlaying = false;
+          if (window.game && typeof window.game.syncBgmButtonUI === 'function') {
+            window.game.syncBgmButtonUI();
+          }
+        });
+      }
+    } catch (e) {
+      this._mantraMusicPlaying = false;
+      return false;
+    }
+
     return true;
   }
 }

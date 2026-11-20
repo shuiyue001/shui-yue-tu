@@ -1324,55 +1324,183 @@ window.TempleModels3D = {
         break;
       }
 
-      // 9. MAKE GOOD WISHES TO FRIENDS: Giant Ancient Bodhi Tree with Red Wishing Ribbons & Friend NPC
+      // 9. MAKE GOOD WISHES TO FRIENDS: Vajrasana Sacred Bodhi Tree (金刚座旁的菩提树) with Wind-Swaying 3D Leaves
       case 'good_wishes': {
-        // Circular Stone Tree Terrace
-        const terrace = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.8, 0.38, 20), stoneMat);
-        terrace.position.y = 0.19;
-        root.add(terrace);
+        const sandstoneMat = new THREE.MeshStandardMaterial({ color: 0xe7d6b4, roughness: 0.72 });
+        const carvedGoldMat = new THREE.MeshStandardMaterial({ color: 0xd99b26, metalness: 0.55, roughness: 0.35 });
+        const barkMat = new THREE.MeshStandardMaterial({ color: 0x5c3d28, roughness: 0.92 });
+        const mossMat = new THREE.MeshStandardMaterial({ color: 0x3f7d4c, roughness: 0.88 });
+        const lampGlowMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
 
-        // Giant Multi-Branch Bodhi Tree
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.85, 3.8, 12), darkWoodMat);
-        trunk.position.y = 2.0;
-        const crownMain = new THREE.Mesh(
-          new THREE.SphereGeometry(2.9, 16, 14),
-          new THREE.MeshLambertMaterial({ color: 0x52b788 })
-        );
-        crownMain.position.y = 4.8;
-        const crownGold = new THREE.Mesh(
-          new THREE.SphereGeometry(2.1, 14, 12),
-          new THREE.MeshLambertMaterial({ color: 0xe9c46a })
-        );
-        crownGold.position.set(1.1, 5.4, 0.6);
-        root.add(trunk, crownMain, crownGold);
+        // Multi-tiered Vajrasana (金刚座 / Diamond Throne) Stone Terrace
+        const lowerPlinth = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 4.5, 0.42, 24), sandstoneMat);
+        lowerPlinth.position.y = 0.21;
+        lowerPlinth.receiveShadow = true;
+        const innerRing = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.26, 24), mossMat);
+        innerRing.position.y = 0.48;
+        const vajrasanaSeat = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.52, 1.45), sandstoneMat);
+        vajrasanaSeat.position.set(0, 0.68, 1.55);
+        const vajrasanaTrim = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.14, 1.58), carvedGoldMat);
+        vajrasanaTrim.position.set(0, 0.92, 1.55);
+        const dharmaDisc = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.045, 8, 20), carvedGoldMat);
+        dharmaDisc.position.set(0, 0.68, 2.30);
+        root.add(lowerPlinth, innerRing, vajrasanaSeat, vajrasanaTrim, dharmaDisc);
 
-        // Red Silk Wishing Ribbons hanging from branches
-        for (let r = 0; r < 10; r++) {
-          const ang = (r / 10) * Math.PI * 2;
-          const ribbon = new THREE.Mesh(
-            new THREE.BoxGeometry(0.12, 1.1, 0.03),
-            new THREE.MeshBasicMaterial({ color: 0xe63946 })
-          );
-          ribbon.position.set(Math.cos(ang) * 2.2, 3.0, Math.sin(ang) * 2.2);
-          root.add(ribbon);
+        // 4 Serene Golden Butter Lamps around the Vajrasana Terrace
+        [[-2.5, 2.3], [2.5, 2.3], [-2.7, -1.8], [2.7, -1.8]].forEach(([lx, lz]) => {
+          const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.10, 0.22, 12), carvedGoldMat);
+          cup.position.set(lx, 0.52, lz);
+          const flame = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), lampGlowMat);
+          flame.position.set(lx, 0.68, lz);
+          root.add(cup, flame);
+        });
+
+        // Sculpted Gnarled Bodhi Tree Trunk & Prop Roots
+        const mainTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.86, 3.6, 12), barkMat);
+        mainTrunk.position.set(0, 2.1, -0.35);
+        mainTrunk.castShadow = true;
+        root.add(mainTrunk);
+
+        for (let r = 0; r < 6; r++) {
+          const ang = (r / 6) * Math.PI * 2 + 0.3;
+          const propRoot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.24, 2.1, 8), barkMat);
+          propRoot.position.set(Math.cos(ang) * 0.72, 1.25, -0.35 + Math.sin(ang) * 0.72);
+          propRoot.rotation.z = Math.cos(ang) * 0.36;
+          propRoot.rotation.x = -Math.sin(ang) * 0.36;
+          root.add(propRoot);
         }
 
-        // Childhood Friend Xiao An NPC
+        // Authentic Heart-Shaped Bodhi Leaf Geometry (with elongated drip-tip!)
+        const leafShape = this.createBodhiLeafShape(0.28);
+        const leafGeo = new THREE.ShapeGeometry(leafShape, 8);
+        const leafMats = [
+          new THREE.MeshStandardMaterial({ color: 0x2d8a4e, roughness: 0.55, side: THREE.DoubleSide }),
+          new THREE.MeshStandardMaterial({ color: 0x40a85b, roughness: 0.50, side: THREE.DoubleSide }),
+          new THREE.MeshStandardMaterial({ color: 0x74c67a, roughness: 0.48, side: THREE.DoubleSide }),
+          new THREE.MeshStandardMaterial({ color: 0xc9b849, emissive: 0x3b2f06, emissiveIntensity: 0.22, roughness: 0.45, side: THREE.DoubleSide })
+        ];
+
+        // 8 Spreading Boughs + 24 Wind-Swaying 3D Bodhi Leaf Clusters
+        const windLeafClusters = [];
+        const boughSpecs = [
+          { ang: 0.0, len: 3.1, y: 3.6, pitch: 0.42 },
+          { ang: 0.78, len: 3.2, y: 3.9, pitch: 0.48 },
+          { ang: 1.57, len: 3.0, y: 3.7, pitch: 0.44 },
+          { ang: 2.35, len: 3.2, y: 4.0, pitch: 0.50 },
+          { ang: 3.14, len: 3.1, y: 3.8, pitch: 0.46 },
+          { ang: 3.92, len: 3.0, y: 3.95, pitch: 0.45 },
+          { ang: 4.71, len: 3.2, y: 3.7, pitch: 0.44 },
+          { ang: 5.50, len: 3.1, y: 4.05, pitch: 0.49 }
+        ];
+
+        boughSpecs.forEach((bs, bi) => {
+          const boughPivot = new THREE.Group();
+          boughPivot.position.set(0, bs.y, -0.35);
+          boughPivot.rotation.y = bs.ang;
+
+          const branchMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.24, bs.len, 8), barkMat);
+          branchMesh.rotation.z = -bs.pitch;
+          branchMesh.position.set(Math.sin(bs.pitch) * bs.len * 0.5, Math.cos(bs.pitch) * bs.len * 0.5, 0);
+          boughPivot.add(branchMesh);
+
+          // Mount 3 layered Bodhi leaf clusters per bough (tip, mid-outer, upper-crown)
+          [0.58, 0.92, 1.12].forEach((frac, ci) => {
+            const cluster = new THREE.Group();
+            const bx = Math.sin(bs.pitch) * bs.len * frac;
+            const by = Math.cos(bs.pitch) * bs.len * frac + (ci === 2 ? 0.55 : 0);
+            cluster.position.set(bx, by, (ci - 1) * 0.42);
+            cluster.userData.windPhase = bi * 0.85 + ci * 1.15;
+            cluster.userData.baseRotZ = cluster.rotation.z;
+
+            // Core soft foliage cushion for lush volume
+            const coreFoliage = new THREE.Mesh(
+              new THREE.SphereGeometry(0.75 + ci * 0.12, 10, 8),
+              new THREE.MeshLambertMaterial({ color: ci === 2 ? 0x52b788 : 0x2d6a4f, transparent: true, opacity: 0.72 })
+            );
+            coreFoliage.scale.set(1.25, 0.72, 1.15);
+            cluster.add(coreFoliage);
+
+            // 10 Individual 3D Heart-Shaped Bodhi Leaves radiating from the cluster
+            for (let li = 0; li < 10; li++) {
+              const lAng = (li / 10) * Math.PI * 2 + ci * 0.5;
+              const lMesh = new THREE.Mesh(leafGeo, leafMats[(bi + ci + li) % leafMats.length]);
+              const rad = 0.52 + (li % 3) * 0.26;
+              lMesh.position.set(Math.cos(lAng) * rad, ((li % 3) - 1) * 0.26, Math.sin(lAng) * rad);
+              lMesh.rotation.set(0.35 + (li % 3) * 0.25, lAng, 0.35);
+              const lScale = 0.95 + (li % 3) * 0.22;
+              lMesh.scale.set(lScale, lScale, lScale);
+              cluster.add(lMesh);
+            }
+            boughPivot.add(cluster);
+            windLeafClusters.push(cluster);
+          });
+
+          root.add(boughPivot);
+        });
+
+        // Crown Top Canopy Cluster
+        const crownCluster = new THREE.Group();
+        crownCluster.position.set(0, 6.2, -0.35);
+        crownCluster.userData.windPhase = 0.4;
+        const crownCore = new THREE.Mesh(
+          new THREE.SphereGeometry(1.55, 12, 10),
+          new THREE.MeshLambertMaterial({ color: 0x40916c, transparent: true, opacity: 0.82 })
+        );
+        crownCore.scale.set(1.3, 0.72, 1.25);
+        crownCluster.add(crownCore);
+        for (let ti = 0; ti < 14; ti++) {
+          const tAng = (ti / 14) * Math.PI * 2;
+          const tLeaf = new THREE.Mesh(leafGeo, leafMats[ti % leafMats.length]);
+          tLeaf.position.set(Math.cos(tAng) * 1.4, (ti % 3) * 0.28, Math.sin(tAng) * 1.4);
+          tLeaf.rotation.set(0.55, tAng, 0.3);
+          tLeaf.scale.set(1.25, 1.25, 1.25);
+          crownCluster.add(tLeaf);
+        }
+        root.add(crownCluster);
+        windLeafClusters.push(crownCluster);
+
+        // Drifting Golden-Jade Bodhi Leaves Floating Gently in the Breeze
+        const driftingLeaves = [];
+        for (let dl = 0; dl < 14; dl++) {
+          const dLeaf = new THREE.Mesh(leafGeo, leafMats[(dl % 2 === 0) ? 3 : 1]);
+          const ang = (dl / 14) * Math.PI * 2;
+          const r = 1.6 + (dl % 3) * 0.85;
+          dLeaf.position.set(Math.cos(ang) * r, 1.4 + (dl % 5) * 0.9, -0.35 + Math.sin(ang) * r);
+          dLeaf.scale.set(0.8, 0.8, 0.8);
+          dLeaf.userData = {
+            baseX: Math.cos(ang) * r,
+            baseZ: -0.35 + Math.sin(ang) * r,
+            phase: dl * 0.7,
+            speed: 0.32 + (dl % 4) * 0.08
+          };
+          root.add(dLeaf);
+          driftingLeaves.push(dLeaf);
+        }
+
+        // Warm Tranquil Golden Light Beneath the Sacred Canopy
+        const canopyLight = new THREE.PointLight(0xffe082, 0.85, 12);
+        canopyLight.position.set(0, 4.2, 0.4);
+        root.add(canopyLight);
+
+        // Childhood Friend Xiao An NPC standing warmly beside the Vajrasana
         const friend = this.createNPC({ robeColor: 0x9b5de5, scale: 0.88 });
-        friend.position.set(-1.8, 0.38, 1.6);
-        friend.rotation.y = 0.5;
+        friend.position.set(-2.3, 0.42, 2.2);
+        friend.rotation.y = 0.55;
         root.add(friend);
 
-        // AFTER: Glowing Golden Sky Lanterns floating around the Bodhi Tree
+        // AFTER: Glowing Golden Wish Orbs floating gently among the Bodhi branches
         for (let l = 0; l < 5; l++) {
           const ang = (l / 5) * Math.PI * 2;
-          const lantern = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.28, 0.2, 0.48, 10),
-            new THREE.MeshBasicMaterial({ color: 0xffd166 })
+          const orb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.18, 10, 8),
+            new THREE.MeshBasicMaterial({ color: 0xffe66d })
           );
-          lantern.position.set(Math.cos(ang) * 2.5, 3.8 + (l % 2) * 0.6, Math.sin(ang) * 2.5);
-          afterEffectGroup.add(lantern);
+          orb.position.set(Math.cos(ang) * 2.6, 3.6 + (l % 2) * 0.7, -0.35 + Math.sin(ang) * 2.6);
+          afterEffectGroup.add(orb);
         }
+
+        root.userData.windLeafClusters = windLeafClusters;
+        root.userData.driftingLeaves = driftingLeaves;
         break;
       }
 
@@ -2607,25 +2735,12 @@ window.TempleModels3D = {
     const wutaiAmberMat = new THREE.MeshStandardMaterial({ color: 0xcfa050, roughness: 0.85 });
     const wutaiPineMat = new THREE.MeshStandardMaterial({ color: 0x2d5432, roughness: 0.86 });
 
-    // Connecting Plazas on West Bank to Wisdom Bridge (z=4) AND Seven-Buddha Bridge (z=-37)
+    // Connecting Plaza on West Bank to Wisdom Bridge (z=4)
     const westApproach = new THREE.Mesh(new THREE.BoxGeometry(6.5, 0.14, 4.6), wutaiStepMat);
     westApproach.position.set(23.0, 0.04, 4.0);
     westApproach.receiveShadow = true;
     westApproach.name = 'walkable_ground';
     valleyGroup.add(westApproach);
-
-    const sevenBridgeApproach = new THREE.Mesh(new THREE.BoxGeometry(10.0, 0.14, 4.6), wutaiStepMat);
-    sevenBridgeApproach.position.set(22.0, 0.04, -37.0);
-    sevenBridgeApproach.receiveShadow = true;
-    sevenBridgeApproach.name = 'walkable_ground';
-    valleyGroup.add(sevenBridgeApproach);
-
-    // North-East forecourt walkway linking East edge of 大雄宝殿 (x=25.5, z=0..-37) to Seven-Buddha Bridge
-    const neForecourtWalk = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.12, 41.0), wutaiStepMat);
-    neForecourtWalk.position.set(25.2, 0.03, -16.5);
-    neForecourtWalk.receiveShadow = true;
-    neForecourtWalk.name = 'walkable_ground';
-    valleyGroup.add(neForecourtWalk);
 
     for (let sx = 34.5; sx <= 114.0; sx += 1.6) {
       const sy = window.GAME_DATA.getTerrainHeight(sx, 4.0);
@@ -2635,40 +2750,7 @@ window.TempleModels3D = {
       step.receiveShadow = true;
       step.name = 'walkable_ground';
       valleyGroup.add(step);
-
-      // Matching Seven-Buddha Mountain Ascending Stone Stairway (z = -37.0)
-      const qSy = window.GAME_DATA.getTerrainHeight(sx, -37.0);
-      const qStep = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.18, 5.4), wutaiStepMat);
-      qStep.position.set(sx, qSy + 0.04, -37.0);
-      qStep.rotation.z = 0.20;
-      qStep.receiveShadow = true;
-      qStep.name = 'walkable_ground';
-      valleyGroup.add(qStep);
     }
-
-    // Summit Ridge Sky-Walkway linking Twin Summits (文殊殿 plaza z=-8.6 <-> 七佛殿 plaza z=-23.5 at x=111)
-    const twinSummitLink = new THREE.Mesh(new THREE.BoxGeometry(4.6, 0.22, 19.0), wutaiStepMat);
-    twinSummitLink.position.set(112.5, 16.54, -16.0);
-    twinSummitLink.receiveShadow = true;
-    twinSummitLink.name = 'walkable_ground';
-    valleyGroup.add(twinSummitLink);
-
-    // Retaining walls & autumn trees framing 七佛山 climb
-    [38, 54, 70, 86, 102].forEach((qx, idx) => {
-      const qy = window.GAME_DATA.getTerrainHeight(qx, -37.0);
-      [-1, 1].forEach((sSide) => {
-        const qWall = new THREE.Mesh(new THREE.BoxGeometry(7.0, 1.45, 0.55), wutaiRedWallMat);
-        qWall.position.set(qx, qy + 0.65, -37.0 + sSide * 4.2);
-        valleyGroup.add(qWall);
-        if (idx % 2 === 0) {
-          const pT = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 2.2, 7), new THREE.MeshStandardMaterial({ color: 0x4f3a29, roughness: 0.9 }));
-          pT.position.set(qx + 1.5, qy + 1.1, -37.0 + sSide * 10.5);
-          const pC = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.4, 8), idx === 0 ? wutaiAmberMat : wutaiPineMat);
-          pC.position.set(qx + 1.5, qy + 3.1, -37.0 + sSide * 10.5);
-          valleyGroup.add(pT, pC);
-        }
-      });
-    });
 
     // Crimson monastery retaining walls & golden-autumn trees framing Mount Wutai steps
     [38, 52, 66, 80, 94, 108].forEach((wx, idx) => {
@@ -4096,20 +4178,81 @@ window.TempleModels3D = {
       });
     }
 
-    // Side Spur Paths connecting the mountain stairway (z=2.8) to each Flower Garden (z=7.6) & Lotus Pond (z=-3.8)
-    const gardenSpurs = window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || [];
-    const pondSpurs = window.GAME_DATA.CHANGSHOU_LOTUS_PONDS || [];
-    [...gardenSpurs, ...pondSpurs].forEach((sp) => {
-      const sy = window.GAME_DATA.getTerrainHeight(sp.x, sp.z);
-      const spurLen = Math.abs(sp.z - 2.8);
-      const spur = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.14, spurLen), slabMat);
-      spur.position.set(sp.x, sy + 0.03, (sp.z + 2.8) / 2);
+    // Blooming multi-color lotus/peony clusters lining BOTH sides of the Seven-Buddha stairway
+    const stairGreenMat = new THREE.MeshLambertMaterial({ color: 0x2d8a4e });
+    const stairPalette = [0xf472b6, 0xfbbf24, 0xfb7185, 0xc084fc, 0xffffff, 0xf97316];
+    for (let sx = -26; sx >= -76; sx -= 3.2) {
+      const sy = window.GAME_DATA.getTerrainHeight(sx, 2.8);
+      [-0.45, 6.05].forEach((fz, sIdx) => {
+        const bush = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), stairGreenMat);
+        bush.scale.set(1.2, 0.7, 1.0);
+        bush.position.set(sx, sy + 0.25, fz);
+        pathGroup.add(bush);
+        for (let b = 0; b < 3; b++) {
+          const col = stairPalette[(Math.abs(Math.round(sx)) + b + sIdx) % stairPalette.length];
+          const bloom = new THREE.Mesh(
+            new THREE.SphereGeometry(0.16, 8, 6),
+            new THREE.MeshStandardMaterial({ color: col, roughness: 0.36 })
+          );
+          bloom.scale.set(1.15, 0.72, 1.15);
+          bloom.position.set(sx + (b - 1) * 0.28, sy + 0.52 + (b % 2) * 0.08, fz + (b === 1 ? 0.14 : -0.1));
+          pathGroup.add(bloom);
+        }
+      });
+    }
+
+    // Scenic Blooming Flower Gardens (牡丹·金盏兰香·七宝天华) along the North side of the path to 七佛殿
+    const qifoFlowerGardens = [
+      { id: 'qifo_garden_1', x: -34.0, z: 8.6 },
+      { id: 'qifo_garden_2', x: -49.0, z: 8.6 },
+      { id: 'qifo_garden_3', x: -64.0, z: 8.6 }
+    ];
+    qifoFlowerGardens.forEach((gd, idx) => {
+      const gy = window.GAME_DATA.getTerrainHeight(gd.x, 2.8);
+      const terrace = new THREE.Mesh(new THREE.BoxGeometry(7.2, 2.4, 5.2), slabMat);
+      terrace.position.set(gd.x, gy - 1.15, gd.z);
+      terrace.receiveShadow = true;
+      pathGroup.add(terrace);
+
+      const spur = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 3.6), slabMat);
+      spur.position.set(gd.x, gy - 1.06, 5.8);
       spur.receiveShadow = true;
-      spur.name = 'walkable_ground';
+      pathGroup.add(spur);
+
+      const bed = this.createWestFlowerGardenBedModel(gd, idx);
+      bed.position.set(gd.x, gy + 0.04, gd.z);
+      if (bed.userData.unplantedGroup) bed.userData.unplantedGroup.visible = false;
+      if (bed.userData.plantedGroup) bed.userData.plantedGroup.visible = true;
+      pathGroup.add(bed);
+    });
+
+    // Stone terraces & spurs on South side for the 4 Interactive Sacred Lotus Pond Quests (优钵罗花·波头摩·分陀利花·拘物头花)
+    (window.GAME_DATA.QIFO_LOTUS_PONDS || []).forEach((pd) => {
+      const py = window.GAME_DATA.getTerrainHeight(pd.x, 2.8);
+      const pondTerrace = new THREE.Mesh(new THREE.BoxGeometry(7.4, 2.4, 5.8), slabMat);
+      pondTerrace.position.set(pd.x, py - 1.15, pd.z);
+      pondTerrace.receiveShadow = true;
+      pathGroup.add(pondTerrace);
+
+      const spur = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.2, 3.4), slabMat);
+      spur.position.set(pd.x, py - 1.06, -0.4);
+      spur.receiveShadow = true;
       pathGroup.add(spur);
     });
 
-    // Wide Open Mountain-Top Summit Plaza (y = 16.5) surrounding 长寿殿 (x in [-120, -78], z in [-20, 28])
+    // Two Summit Flower Beds flanking the 七佛殿 plaza entrance (clear of the shoe rack at x=-84, z=9.5)
+    [
+      { id: 'qifo_summit_garden_s', x: -81.5, z: -4.2, idx: 0 },
+      { id: 'qifo_summit_garden_n', x: -81.5, z: 14.5, idx: 2 }
+    ].forEach((sg) => {
+      const sBed = this.createWestFlowerGardenBedModel(sg, sg.idx);
+      sBed.position.set(sg.x, 16.56, sg.z);
+      if (sBed.userData.unplantedGroup) sBed.userData.unplantedGroup.visible = false;
+      if (sBed.userData.plantedGroup) sBed.userData.plantedGroup.visible = true;
+      pathGroup.add(sBed);
+    });
+
+    // Wide Open Mountain-Top Summit Plaza (y = 16.5) surrounding Relocated 七佛殿 (x in [-120, -78], z in [-20, 28])
     const summitPlaza = new THREE.Mesh(new THREE.BoxGeometry(42.0, 0.10, 48.0), slabMat);
     summitPlaza.position.set(-99.0, 16.51, 4.0);
     summitPlaza.receiveShadow = true;
@@ -4712,11 +4855,33 @@ window.TempleModels3D = {
       shelf.receiveShadow = true;
       rack.add(shelf);
     });
-    const signBoard = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.34, 0.14), darkTrim);
+    const signBoard = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.36, 0.14), darkTrim);
     signBoard.position.set(0, 1.62, 0);
-    const signRim = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.38, 0.08), goldMat);
+    const signRim = new THREE.Mesh(new THREE.BoxGeometry(2.14, 0.40, 0.08), goldMat);
     signRim.position.set(0, 1.62, 0.01);
-    rack.add(signBoard, signRim);
+    const signCv = document.createElement('canvas');
+    signCv.width = 256;
+    signCv.height = 64;
+    const sCtx = signCv.getContext('2d');
+    sCtx.fillStyle = '#3b180e';
+    sCtx.fillRect(0, 0, 256, 64);
+    sCtx.strokeStyle = '#f4b942';
+    sCtx.lineWidth = 4;
+    sCtx.strokeRect(4, 4, 248, 56);
+    sCtx.fillStyle = '#fde68a';
+    sCtx.font = 'bold 28px "Microsoft YaHei", sans-serif';
+    sCtx.textAlign = 'center';
+    sCtx.textBaseline = 'middle';
+    sCtx.fillText('脱鞋入殿 · 鞋架', 128, 33);
+    const signTex = new THREE.CanvasTexture(signCv);
+    if (THREE.SRGBColorSpace) signTex.colorSpace = THREE.SRGBColorSpace;
+    const signFaceMat = new THREE.MeshBasicMaterial({ map: signTex });
+    const signFront = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 0.30), signFaceMat);
+    signFront.position.set(0, 1.62, 0.08);
+    const signBack = new THREE.Mesh(new THREE.PlaneGeometry(1.95, 0.30), signFaceMat);
+    signBack.position.set(0, 1.62, -0.08);
+    signBack.rotation.y = Math.PI;
+    rack.add(signBoard, signRim, signFront, signBack);
 
     // Decorative slippers from other pilgrims on lower shelf
     [-0.58, 0.58].forEach((ox) => {
@@ -5274,7 +5439,198 @@ window.TempleModels3D = {
     return hall;
   },
 
-  // -------------------- RELOCATED 七佛殿 ATOP SEVEN-BUDDHA MOUNTAIN (x = 124, y = 16.5, z = -37, facing West -X) --------------------
+  // -------------------- BODHI LEAF 3D SHAPE & WISH LEAF MESH --------------------
+  createBodhiLeafShape(scale = 1.0) {
+    const s = scale;
+    const shape = new THREE.Shape();
+    // Stem base at bottom (0, -1.05s), sweeping heart lobes, tapering into a graceful Bodhi drip-tip at top (+1.45s)
+    shape.moveTo(0, -0.78 * s);
+    shape.bezierCurveTo(-0.98 * s, -0.82 * s, -1.08 * s, 0.18 * s, -0.44 * s, 0.72 * s);
+    shape.bezierCurveTo(-0.14 * s, 0.96 * s, -0.04 * s, 1.25 * s, 0, 1.48 * s);
+    shape.bezierCurveTo(0.04 * s, 1.25 * s, 0.14 * s, 0.96 * s, 0.44 * s, 0.72 * s);
+    shape.bezierCurveTo(1.08 * s, 0.18 * s, 0.98 * s, -0.82 * s, 0, -0.78 * s);
+    return shape;
+  },
+
+  createBodhiWishLeafMesh(leafTexture, scale = 1.0) {
+    const group = new THREE.Group();
+    const shape = this.createBodhiLeafShape(0.62 * scale);
+    const geo = new THREE.ShapeGeometry(shape, 16);
+    // Normalize UVs cleanly onto [0..1] for the Bodhi leaf canvas texture
+    const pos = geo.attributes.position;
+    const uvs = [];
+    for (let i = 0; i < pos.count; i++) {
+      const px = pos.getX(i);
+      const py = pos.getY(i);
+      const u = (px / (1.8 * 0.62 * scale)) + 0.5;
+      const v = (py - (-0.82 * 0.62 * scale)) / (2.35 * 0.62 * scale);
+      uvs.push(Math.max(0, Math.min(1, u)), Math.max(0, Math.min(1, v)));
+    }
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+
+    const leafMat = new THREE.MeshStandardMaterial({
+      map: leafTexture || null,
+      color: leafTexture ? 0xffffff : 0x52b788,
+      emissive: 0x1b4332,
+      emissiveIntensity: 0.24,
+      roughness: 0.42,
+      side: THREE.DoubleSide
+    });
+    const leafMesh = new THREE.Mesh(geo, leafMat);
+    group.add(leafMesh);
+
+    // Delicate curved golden petiole stem at the base of the Bodhi leaf
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018 * scale, 0.024 * scale, 0.34 * scale, 6),
+      new THREE.MeshStandardMaterial({ color: 0xf4b942, metalness: 0.65, roughness: 0.3 })
+    );
+    stem.position.y = -0.62 * scale;
+    group.add(stem);
+
+    return group;
+  },
+
+  // -------------------- STOP #1 MAP: 长寿殿 (LONGEVITY SANCTUARY TERRAIN & WALKWAY) --------------------
+  createChangshouMapTerrain() {
+    const valleyGroup = new THREE.Group();
+    const width = 180;
+    const depth = 130;
+    const terrainGeo = new THREE.PlaneGeometry(width, depth, 120, 88);
+    terrainGeo.rotateX(-Math.PI / 2);
+
+    const posAttr = terrainGeo.attributes.position;
+    const colors = [];
+    const jadeMeadow = new THREE.Color(0x7aa36b);
+    const brightMoss = new THREE.Color(0x88a962);
+    const tealPeak = new THREE.Color(0x4b7f6e);
+    const riverBank = new THREE.Color(0x8c8770);
+    const snowCap = new THREE.Color(0xeef4fa);
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const vx = posAttr.getX(i) - 34; // covers x in [-124, +56]
+      const vz = posAttr.getZ(i) + 4;  // covers z in [-61, +69]
+      posAttr.setX(i, vx);
+      posAttr.setZ(i, vz);
+
+      const h = window.GAME_DATA.getChangshouMapTerrainHeight(vx, vz);
+      posAttr.setY(i, h - 0.05);
+
+      const c = new THREE.Color();
+      if (Math.abs(vx - 12.0) < 3.4) {
+        c.copy(riverBank);
+      } else if (vx < -92) {
+        c.lerpColors(tealPeak, snowCap, Math.min(1, Math.max(0, (h - 17.5) / 15.0)));
+      } else if (vx <= -48) {
+        c.copy(jadeMeadow).lerp(brightMoss, 0.35);
+      } else if (vx < -10) {
+        const slopeT = Math.min(1, Math.max(0, (-10 - vx) / 38));
+        c.lerpColors(brightMoss, jadeMeadow, slopeT * 0.85);
+      } else {
+        c.lerpColors(brightMoss, tealPeak, Math.min(1, Math.max(0, h / 12.0)) * 0.6);
+      }
+      colors.push(c.r, c.g, c.b);
+    }
+    terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    terrainGeo.computeVertexNormals();
+
+    const groundTex = this.createRealisticGroundTexture();
+    const terrainMesh = new THREE.Mesh(terrainGeo, new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      map: groundTex,
+      roughness: 0.90,
+      metalness: 0.02
+    }));
+    terrainMesh.receiveShadow = true;
+    terrainMesh.name = 'walkable_ground';
+    valleyGroup.add(terrainMesh);
+
+    // Crystal Lotus Stream flowing North-South along x = 12.0
+    const riverMat = new THREE.MeshStandardMaterial({
+      color: 0x62a8bc,
+      emissive: 0x163848,
+      roughness: 0.10,
+      metalness: 0.62,
+      transparent: true,
+      opacity: 0.88
+    });
+    const streamMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 120, 6, 20), riverMat);
+    streamMesh.rotation.x = -Math.PI / 2;
+    streamMesh.position.set(12.0, -0.05, 4.0);
+    valleyGroup.add(streamMesh);
+
+    // Arched Wooden Lotus Bridge spanning the stream at x = 12.0, z = 4.0
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x8d5228, roughness: 0.72 });
+    const railRedMat = new THREE.MeshStandardMaterial({ color: 0x8f1d1d, roughness: 0.55 });
+    const goldMat = new THREE.MeshStandardMaterial({ color: 0xf4b942, metalness: 0.78, roughness: 0.24 });
+    for (let i = 0; i < 16; i++) {
+      const bx = 7.6 + i * 0.58;
+      const t = (bx - 12.0) / 4.8;
+      const by = 0.22 + 1.38 * Math.max(0, 1 - t * t);
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.18, 4.8), woodMat);
+      plank.position.set(bx, by - 0.06, 4.0);
+      plank.rotation.z = -t * 0.26;
+      plank.name = 'walkable_ground';
+      valleyGroup.add(plank);
+    }
+    [1.55, 6.45].forEach((rz) => {
+      for (let bx = 8.0; bx <= 16.0; bx += 2.0) {
+        const t = (bx - 12.0) / 4.8;
+        const by = 0.22 + 1.38 * Math.max(0, 1 - t * t);
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), railRedMat);
+        post.position.set(bx, by + 0.48, rz);
+        const finial = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), goldMat);
+        finial.position.set(bx, by + 1.08, rz);
+        valleyGroup.add(post, finial);
+      }
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(8.8, 0.12, 0.16), railRedMat);
+      rail.position.set(12.0, 1.48, rz);
+      valleyGroup.add(rail);
+    });
+
+    // Ascending Stone Stairway rising West from x = -10 (y=0.1) to Summit Plaza x = -48 (y=16.5)
+    const slabMat = new THREE.MeshStandardMaterial({ color: 0xe7dfd1, roughness: 0.78 });
+    for (let sx = -10.0; sx >= -48.0; sx -= 1.6) {
+      const sy = window.GAME_DATA.getChangshouMapTerrainHeight(sx, 4.0);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.18, 5.4), slabMat);
+      step.position.set(sx, sy + 0.04, 4.0);
+      step.rotation.z = -0.36;
+      step.name = 'walkable_ground';
+      valleyGroup.add(step);
+    }
+
+    // Side spurs to the 3 Flower Gardens & 4 Sacred Lotus Ponds
+    const gardenSpurs = window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || [];
+    const pondSpurs = window.GAME_DATA.CHANGSHOU_LOTUS_PONDS || [];
+    [...gardenSpurs, ...pondSpurs].forEach((sp) => {
+      const sy = window.GAME_DATA.getChangshouMapTerrainHeight(sp.x, sp.z);
+      const spurLen = Math.abs(sp.z - 4.0);
+      const spur = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.14, spurLen), slabMat);
+      spur.position.set(sp.x, sy + 0.03, (sp.z + 4.0) / 2);
+      spur.name = 'walkable_ground';
+      valleyGroup.add(spur);
+    });
+
+    // Open Jade-and-Gold Summit Plaza around 长寿殿 (x in [-86, -48], z in [-20, 28])
+    const summitPlaza = new THREE.Mesh(new THREE.BoxGeometry(38.0, 0.10, 48.0), slabMat);
+    summitPlaza.position.set(-67.0, 16.51, 4.0);
+    summitPlaza.receiveShadow = true;
+    summitPlaza.name = 'walkable_ground';
+    valleyGroup.add(summitPlaza);
+
+    // Misty Valley Canopy & Pink Blossom Trees framing the Longevity Sanctuary
+    for (let x = -84; x <= 36; x += 12) {
+      [-22, 30].forEach((z, zi) => {
+        const y = window.GAME_DATA.getChangshouMapTerrainHeight(x, z);
+        const tree = this.createMistyValleyTree(1.25 + (Math.abs(x) % 5) * 0.12, (Math.floor(x) + zi) % 3 !== 0);
+        tree.position.set(x, y - 0.1, z);
+        valleyGroup.add(tree);
+      });
+    }
+
+    return valleyGroup;
+  },
+
+  // -------------------- RELOCATED 七佛殿 ATOP WEST SEVEN-BUDDHA MOUNTAIN (x = -96, y = 16.5, z = 4.0, facing East +X) --------------------
   createSevenBuddhasMountainHallModel(buddhasList, matPreset) {
     const hall = new THREE.Group();
     const stoneFloorMat = new THREE.MeshStandardMaterial({ color: 0xe6decb, roughness: 0.38 });
@@ -5284,7 +5640,7 @@ window.TempleModels3D = {
     const roofTileTex = this.createRoofTileTexture(0xc2410c);
     const roofMat = new THREE.MeshStandardMaterial({ map: roofTileTex, roughness: 0.36, metalness: 0.24 });
 
-    // Wide summit floor platform (21m in X x 30m in Z so all 7 Buddhas stand spaciously!)
+    // Wide summit floor platform (21.5m in X x 30.5m in Z so all 7 Buddhas stand spaciously!)
     const floorBase = new THREE.Mesh(new THREE.BoxGeometry(21.5, 0.56, 30.5), stoneFloorMat);
     floorBase.position.set(0, 0.14, 0);
     floorBase.receiveShadow = true;
@@ -5298,33 +5654,33 @@ window.TempleModels3D = {
     hall.add(interiorFloor);
 
     const carpet = new THREE.Mesh(new THREE.BoxGeometry(12.5, 0.04, 6.2), new THREE.MeshStandardMaterial({ color: 0x8e1b1b, roughness: 0.78 }));
-    carpet.position.set(-1.5, 0.39, 0);
+    carpet.position.set(1.5, 0.39, 0);
     carpet.name = 'walkable_ground';
     hall.add(carpet);
 
-    // Back East Wall (+X) & North/South Side Walls (-Z / +Z)
+    // Back West Wall (-X) & North/South Side Walls (-Z / +Z)
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.8, 10.6, 29.2), crimsonWallMat);
-    backWall.position.set(9.8, 5.5, 0);
+    backWall.position.set(-9.8, 5.5, 0);
     const northWall = new THREE.Mesh(new THREE.BoxGeometry(20.0, 10.2, 0.8), crimsonWallMat);
     northWall.position.set(0, 5.3, -14.2);
     const southWall = northWall.clone();
     southWall.position.set(0, 5.3, 14.2);
     hall.add(backWall, northWall, southWall);
 
-    // 7 Standing Buddhas along Back East Wall (+X, at lx = 7.4, facing West -X -> rotation.y = -Math.PI / 2)
+    // 7 Standing Buddhas along Back West Wall (-X, at lx = -7.4, facing East +X -> rotation.y = Math.PI / 2)
     const altarStage = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.45, 25.4), crimsonWallMat);
-    altarStage.position.set(7.4, 1.05, 0);
+    altarStage.position.set(-7.4, 1.05, 0);
     const altarTrim = new THREE.Mesh(new THREE.BoxGeometry(3.65, 0.24, 25.8), goldMat);
-    altarTrim.position.set(7.4, 1.78, 0);
+    altarTrim.position.set(-7.4, 1.78, 0);
     hall.add(altarStage, altarTrim);
 
     const buddhaStatues = [];
     const spacing = 3.45;
     (buddhasList || []).forEach((bData, idx) => {
-      const bz = (idx - 3) * spacing;
+      const bz = (3 - idx) * spacing;
       const statue = this.createDetailedBuddhaStatue(bData, matPreset);
-      statue.rotation.y = -Math.PI / 2;
-      statue.position.set(7.4, 1.88, bz);
+      statue.rotation.y = Math.PI / 2;
+      statue.position.set(-7.4, 1.88, bz);
       statue.traverse((c) => {
         c.userData.buddhaIdx = idx;
       });
@@ -5337,21 +5693,21 @@ window.TempleModels3D = {
       new THREE.CylinderGeometry(0.9, 2.2, 7.5, 24, 1, true),
       new THREE.MeshBasicMaterial({ color: 0xffe66d, transparent: true, opacity: 0.28, side: THREE.DoubleSide })
     );
-    spotlight.position.set(6.8, 5.2, 0);
+    spotlight.position.set(-6.8, 5.2, 0);
     spotlight.visible = false;
     hall.add(spotlight);
 
-    // Offering Table at local (2.8, 0.38, 0) facing West (-X): middle=water (z=0), left=flower (z=+2.8), right=scent (z=-2.8)
-    const offerTable = this.createHallAltarTableWithOfferings(1);
-    offerTable.position.set(2.8, 0.38, 0);
+    // Offering Table at local (-2.8, 0.38, 0) facing East (+X)
+    const offerTable = this.createHallAltarTableWithOfferings(-1);
+    offerTable.position.set(-2.8, 0.38, 0);
     const { waterGroup, flowerGroup, scentGroup } = offerTable.userData;
     hall.add(offerTable);
 
-    // 9 Meditation Cushions facing East toward the 7 Buddhas
+    // 9 Meditation Cushions facing West (-X) toward the 7 Buddhas
     const seatPositions = [];
     const baseMat = new THREE.MeshStandardMaterial({ color: 0xe09f3e, roughness: 0.55 });
     const topMat = new THREE.MeshStandardMaterial({ color: 0x9e2a2b, roughness: 0.65 });
-    [[-1.8, -6.4], [-1.8, -3.2], [-1.8, 0], [-1.8, 3.2], [-1.8, 6.4], [-5.0, -4.8], [-5.0, -1.6], [-5.0, 1.6], [-5.0, 4.8]].forEach(([mx, mz]) => {
+    [[1.8, -6.4], [1.8, -3.2], [1.8, 0], [1.8, 3.2], [1.8, 6.4], [5.0, -4.8], [5.0, -1.6], [5.0, 1.6], [5.0, 4.8]].forEach(([mx, mz]) => {
       const matGrp = new THREE.Group();
       matGrp.position.set(mx, 0.38, mz);
       const cushion = new THREE.Mesh(new THREE.CylinderGeometry(0.96, 1.05, 0.24, 20), baseMat);
@@ -5363,21 +5719,35 @@ window.TempleModels3D = {
       seatPositions.push({ lx: mx, lz: mz, mesh: matGrp });
     });
 
-    // Cutaway West Front Facade & Eave Roof (auto-hidden when stepping inside 七佛殿)
-    const frontRoofCutaway = new THREE.Group();
+    // East Front Gate & Walls (ALWAYS VISIBLE when approaching, entering, or exiting 七佛殿!)
     const fwN = new THREE.Mesh(new THREE.BoxGeometry(0.8, 9.6, 10.6), crimsonWallMat);
-    fwN.position.set(-9.4, 5.0, -9.2);
+    fwN.position.set(9.4, 5.0, -9.2);
     const fwS = fwN.clone();
-    fwS.position.set(-9.4, 5.0, 9.2);
-    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.9, 3.8, 9.0), pillarMat);
-    lintel.position.set(-9.4, 7.9, 0);
+    fwS.position.set(9.4, 5.0, 9.2);
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.9, 3.6, 9.0), pillarMat);
+    lintel.position.set(9.4, 8.0, 0);
 
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(19.5, 5.2, 4), roofMat);
-    roof.rotation.y = Math.PI / 4;
-    roof.scale.set(0.86, 1, 1.24);
-    roof.position.set(0, 13.0, 0);
-    frontRoofCutaway.add(fwN, fwS, lintel, roof);
+    // Grand Crimson Gate Pillars framing the open doorway (z in [-3.8, +3.8])
+    [-3.9, 3.9].forEach((gz) => {
+      const gp = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 6.6, 12), pillarMat);
+      gp.position.set(9.4, 3.5, gz);
+      const gpBase = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.62, 0.4, 12), stoneFloorMat);
+      gpBase.position.set(9.4, 0.35, gz);
+      hall.add(gp, gpBase);
+    });
 
+    // Open Vermilion Double Temple Doors (swung neatly inward/outward with golden studs so gate feels real!)
+    [-1, 1].forEach((side) => {
+      const doorLeaf = new THREE.Mesh(new THREE.BoxGeometry(0.24, 5.6, 3.35), crimsonWallMat);
+      doorLeaf.position.set(7.85, 3.0, side * 3.85);
+      doorLeaf.rotation.y = side * (Math.PI / 2 - 0.12);
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.25, 3.38), goldMat);
+      trim.position.set(7.85, 5.7, side * 3.85);
+      trim.rotation.y = side * (Math.PI / 2 - 0.12);
+      hall.add(doorLeaf, trim);
+    });
+
+    // Overhead 七佛殿 Plaque on East Gate Lintel (always visible!)
     const plaqueCanvas = document.createElement('canvas');
     plaqueCanvas.width = 512;
     plaqueCanvas.height = 192;
@@ -5395,9 +5765,16 @@ window.TempleModels3D = {
     const plaqueTex = new THREE.CanvasTexture(plaqueCanvas);
     if (THREE.SRGBColorSpace) plaqueTex.colorSpace = THREE.SRGBColorSpace;
     const plaqueBoard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.2, 5.8), new THREE.MeshBasicMaterial({ map: plaqueTex }));
-    plaqueBoard.position.set(-10.0, 7.8, 0);
-    frontRoofCutaway.add(plaqueBoard);
+    plaqueBoard.position.set(10.0, 7.9, 0);
+    hall.add(fwN, fwS, lintel, plaqueBoard);
 
+    // Cutaway Upper Roof ONLY (lifts away only when inside 七佛殿 so walls & doorway gate stay solid!)
+    const frontRoofCutaway = new THREE.Group();
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(19.5, 5.2, 4), roofMat);
+    roof.rotation.y = Math.PI / 4;
+    roof.scale.set(0.86, 1, 1.24);
+    roof.position.set(0, 13.0, 0);
+    frontRoofCutaway.add(roof);
     hall.add(frontRoofCutaway);
 
     hall.userData = {

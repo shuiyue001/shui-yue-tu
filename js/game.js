@@ -30,11 +30,13 @@ class BuddhistPracticeGame {
       wishesSelected: {}, // { wishId: true }
       quizMasterUnlocked: false,
       amitofoUnlocked: false,
+      omManiUnlocked: false,
       activePrayerSkillId: 'amitofo',
       beadCount: 0,
       bowCount: 0,
       completedBow25: false,
       amitofoCount: 0,
+      omManiCount: 0,
       stupaLaps: 0,
       circledStupas: {}, // { 0..6: true } on path to Mount Wutai 文殊殿
       wenshuHallUnlocked: false,
@@ -42,7 +44,8 @@ class BuddhistPracticeGame {
       wenshuOfferings: { water: false, flower: false, scent: false },
       wenshuMantraCount: 0,
       plantedFlowerGardens: {}, // { flower_garden_1..3: true }
-      plantedLotusPonds: {}, // { lotus_pond_1..3: true }
+      plantedLotusPonds: {}, // { lotus_pond_1..4: true }
+      plantedQifoPonds: {}, // { qifo_pond_1..4: true } on path to 七佛殿
       bowedChangshou: false,
       changshouOfferings: { water: false, flower: false, scent: false },
       changshouPrayerCount: 0,
@@ -66,6 +69,13 @@ class BuddhistPracticeGame {
     if (!Array.isArray(this.state.litLamps)) this.state.litLamps = [];
     if (!this.state.daxiongOfferings) this.state.daxiongOfferings = { water: false, flower: false, scent: false };
     if (typeof this.state.wearingShoes !== 'boolean') this.state.wearingShoes = true;
+    if (!this.state.plantedQifoPonds) this.state.plantedQifoPonds = {};
+    if (typeof this.state.bgmVolume !== 'number' || !Number.isFinite(this.state.bgmVolume)) {
+      this.state.bgmVolume = 0.20;
+    }
+    if (window.templeAudio && typeof window.templeAudio.setBgmVolume === 'function') {
+      window.templeAudio.setBgmVolume(this.state.bgmVolume);
+    }
     this.activeShoeRackKey = 'daxiong';
     this._nearShoeRack = null;
     if (!this.state.wishesSelected) this.state.wishesSelected = {};
@@ -75,7 +85,13 @@ class BuddhistPracticeGame {
     if (!this.state.plantedLotusPonds) this.state.plantedLotusPonds = {};
     if (!this.state.changshouOfferings) this.state.changshouOfferings = { water: false, flower: false, scent: false };
     if (!this.state.readSutras) this.state.readSutras = {};
-    if (!['amitofo', 'wenshu', 'changshou'].includes(this.state.activePrayerSkillId)) {
+    if (this.state.bowedThreeBuddhas && this.state.bowedThreeBuddhas[1]) {
+      this.state.amitofoUnlocked = true;
+    }
+    if (this.state.bowedThreeBuddhas && this.state.bowedThreeBuddhas[2]) {
+      this.state.omManiUnlocked = true;
+    }
+    if (!['amitofo', 'om_mani', 'wenshu', 'changshou'].includes(this.state.activePrayerSkillId)) {
       this.state.activePrayerSkillId = 'amitofo';
     }
     this._isPrayerChanting = false;
@@ -172,6 +188,12 @@ class BuddhistPracticeGame {
     this.isDraggingCam = false;
     this.prevMouseX = 0;
     this.prevMouseY = 0;
+    this._camManualCooldown = 0;
+    this._camFollowAlignTimer = 0;
+    this._backwardHoldTimer = 0;
+    this._allow180CamFlip = false;
+    this._moveInputAzimuth = null;
+    this._lastMoveInputSig = '';
     this.playerVelY = 0;
     this.isGrounded = true;
     this._splashTimer = 0;
@@ -187,10 +209,14 @@ class BuddhistPracticeGame {
     this.publicTempleGroup = new THREE.Group();
     this.templeBuildingGroup = new THREE.Group();
     this.sevenBuddhasGroup = new THREE.Group();
+    this.changshouMapGroup = new THREE.Group();
     this.personalSpaceGroup = new THREE.Group();
     this.playerGroup = new THREE.Group();
     this.charParts = {};
     this.compassArrow = null;
+    this._bodhiQuestState = null;
+    this._flyingWishLeaf = null;
+    this._mantraAutoStarted = false;
 
     // Interactive Registries
     this.deedStations = [];
@@ -206,15 +232,20 @@ class BuddhistPracticeGame {
 
     this.initThree();
     this.buildPublicTempleScene();
+    this.buildChangshouMapScene();
     this.buildPersonalSpaceScene();
     this.buildPlayerCharacter();
+    this.createNightFireflies();
+    this.createGroundInteractionHalo();
     this.applySkyTheme();
     this.initControls();
     this.initUI();
+    this.initMinimap();
     this.selectNextUnfinishedHint();
     this.applyLanguageToDOM();
     this.refreshAllWorldLabelsLanguage();
     this.updateHUD();
+    this.updateMinimap(true);
     this.initMultiplayer();
     this.animate();
   }
@@ -275,16 +306,33 @@ class BuddhistPracticeGame {
     return !!(this.state.completedDeeds && this.state.completedDeeds['build_wisdom_bridge']);
   }
 
-  canCrossSevenBuddhaBridge() {
-    return !!(this.state.completedDeeds && this.state.completedDeeds['build_seven_buddha_bridge']);
-  }
-
   canEnterWenshuHall() {
     return !!this.state.wenshuHallUnlocked || this.getCircledStupaCount() >= 7;
   }
 
   canEnterQifoHall() {
-    return this.canCrossSevenBuddhaBridge();
+    return this.canEnterPrayerHall();
+  }
+
+  getMainMapBowedSummary() {
+    const bowedThree = Math.min(3, this.getBowedThreeBuddhaCount());
+    const bowedSeven = Math.min(7, this.getBowedBuddhaCount());
+    const bowedManjushri = this.state.bowedManjushri ? 1 : 0;
+    const bowedCount = bowedThree + bowedSeven + bowedManjushri;
+    return {
+      bowedThree,
+      bowedSeven,
+      bowedManjushri,
+      bowedCount,
+      total: 11,
+      allBowed: bowedThree >= 3 && bowedSeven >= 7 && bowedManjushri >= 1
+    };
+  }
+
+  canEnterChangshouMap() {
+    const lp = this.state.liberationPoints || 0;
+    const summary = this.getMainMapBowedSummary();
+    return lp >= 3 && summary.allBowed;
   }
 
   isInsidePrayerHall() {
@@ -300,7 +348,7 @@ class BuddhistPracticeGame {
   isInsideQifoHall() {
     if (this.currentScene !== 'public_temple') return false;
     const p = this.playerGroup.position;
-    return p.x > 114.6 && p.x < 134.2 && p.z > -51.2 && p.z < -22.8;
+    return p.x < -86.6 && p.x > -106.2 && p.z > -11.0 && p.z < 19.0;
   }
 
   isInsideWenshuHall() {
@@ -310,9 +358,9 @@ class BuddhistPracticeGame {
   }
 
   isInsideChangshouHall() {
-    if (this.currentScene !== 'public_temple') return false;
+    if (this.currentScene !== 'changshou_map') return false;
     const p = this.playerGroup.position;
-    return p.x < -86.6 && p.x > -105.4 && p.z > -8.4 && p.z < 16.4;
+    return p.x < -56.6 && p.x > -75.4 && p.z > -8.4 && p.z < 16.4;
   }
 
   isInsideAnyPrayerHall() {
@@ -327,6 +375,7 @@ class BuddhistPracticeGame {
     let best = null;
     let bestD = Infinity;
     (this.shoeRacks || []).forEach((rk) => {
+      if ((rk.scene || 'public_temple') !== this.currentScene) return;
       const d = Math.hypot(pos.x - rk.x, pos.z - rk.z);
       if (d < bestD) {
         bestD = d;
@@ -344,7 +393,7 @@ class BuddhistPracticeGame {
     (this.shoeRacks || []).forEach((rk) => {
       const onRack = rk.group && rk.group.userData && rk.group.userData.shoesOnRackGroup;
       if (onRack) {
-        onRack.visible = !wearing && rk.key === (this.activeShoeRackKey || 'daxiong');
+        onRack.visible = !wearing && (rk.scene || 'public_temple') === this.currentScene && rk.key === (this.activeShoeRackKey || 'daxiong');
       }
       if (rk.labelEl) {
         rk.labelEl.innerHTML = wearing
@@ -397,24 +446,6 @@ class BuddhistPracticeGame {
     ));
   }
 
-  rebuildSevenBuddhaBridge() {
-    if (!this.publicTempleGroup) return;
-    if (this.sevenBuddhaBridgeGroup) {
-      this.publicTempleGroup.remove(this.sevenBuddhaBridgeGroup);
-      this.sevenBuddhaBridgeGroup = null;
-    }
-    const isBuilt = this.canCrossSevenBuddhaBridge();
-    this.sevenBuddhaBridgeGroup = window.TempleModels3D.createSevenBuddhaBridgeModel(isBuilt);
-    if (!isBuilt && this.sevenBuddhaBridgeGroup) {
-      this.sevenBuddhaBridgeGroup.traverse((child) => {
-        if (child.isMesh) {
-          child.userData.deedId = 'build_seven_buddha_bridge';
-        }
-      });
-    }
-    this.publicTempleGroup.add(this.sevenBuddhaBridgeGroup);
-  }
-
   rebuildWisdomBridge() {
     if (!this.publicTempleGroup) return;
     if (this.wisdomBridgeGroup) {
@@ -439,15 +470,11 @@ class BuddhistPracticeGame {
   }
 
   addVirtuePoints(amount, reasonText, worldPos = null) {
-    const prevUnlocked = this.state.amitofoUnlocked;
     const prevCanEnter = this.canEnterPrayerHall();
 
     this.state.virtuePoints += amount;
     if (this.state.virtuePoints >= 10 && this.getCompletedDeedCount() >= 5) {
       this.state.prayerHallUnlocked = true;
-    }
-    if (this.state.virtuePoints >= 100) {
-      this.state.amitofoUnlocked = true;
     }
 
     const nowCanEnter = this.canEnterPrayerHall();
@@ -456,20 +483,10 @@ class BuddhistPracticeGame {
         window.templeAudio.playGateOpenFanfare();
         this.triggerGateOpenSkyLotusAndConfetti();
         this.showToast(this.t(
-          '🪷🎉 10 Virtue Points Reached! A Giant Lotus blooms in the sky with confetti as the 7-Buddha Hall Gate opens!',
-          '🪷🎉 功德已满 10 点！空中金莲盛开、彩花飞舞，七佛宝殿大门敞开！'
+          '🪷🎉 10 Virtue Points Reached! A Giant Lotus blooms in the sky as 大雄宝殿 & 七佛殿 open!',
+          '🪷🎉 功德已满 10 点！空中金莲盛开、彩花飞舞，大雄宝殿与七佛殿大门敞开！'
         ));
       }, 350);
-    }
-
-    if (!prevUnlocked && this.state.amitofoUnlocked) {
-      setTimeout(() => {
-        window.templeAudio.playOfferingSound();
-        this.showToast(this.t(
-          '🪷🎉 100 Virtue Points Reached! Prayer Skill "Nanmo Amitofo" (+5 VP) UNLOCKED!',
-          '🪷🎉 功德圆满 100 点！解锁「南无阿弥陀佛」念佛技能（+5 功德）！'
-        ));
-      }, 650);
     }
 
     this.saveState();
@@ -595,8 +612,8 @@ class BuddhistPracticeGame {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     container.appendChild(this.renderer.domElement);
 
-    const hemiLight = new THREE.HemisphereLight(0xfff8eb, 0x6b5b45, 0.88);
-    this.scene.add(hemiLight);
+    this.hemiLight = new THREE.HemisphereLight(0xfff8eb, 0x6b5b45, 0.88);
+    this.scene.add(this.hemiLight);
 
     this.dirLight = new THREE.DirectionalLight(0xfff4d6, 1.25);
     this.dirLight.position.set(28, 48, 34);
@@ -612,13 +629,15 @@ class BuddhistPracticeGame {
     this.scene.add(this.dirLight.target);
 
     // Warm Golden Altar Point Lights inside the 7-Buddha Hall
-    const altarLightCenter = new THREE.PointLight(0xffcf56, 1.5, 38);
-    altarLightCenter.position.set(0, 7, -18);
-    this.publicTempleGroup.add(altarLightCenter);
+    this.altarLightCenter = new THREE.PointLight(0xffcf56, 1.5, 38);
+    this.altarLightCenter.position.set(0, 7, -18);
+    this.publicTempleGroup.add(this.altarLightCenter);
 
     this.publicTempleGroup.add(this.templeBuildingGroup);
     this.publicTempleGroup.add(this.sevenBuddhasGroup);
     this.scene.add(this.publicTempleGroup);
+    this.scene.add(this.changshouMapGroup);
+    this.changshouMapGroup.visible = false;
     this.scene.add(this.personalSpaceGroup);
     this.personalSpaceGroup.visible = false;
 
@@ -630,13 +649,513 @@ class BuddhistPracticeGame {
   }
 
   applySkyTheme() {
-    const theme = window.GAME_DATA.SKY_THEMES.find((t) => t.id === this.state.skyThemeId) || window.GAME_DATA.SKY_THEMES[0];
-    if (this.currentScene === 'public_temple') {
-      this.scene.background.setHex(theme.sky);
-      this.scene.fog.color.setHex(theme.fog);
+    const themes = window.GAME_DATA.SKY_THEMES || [];
+    const theme = themes.find((t) => t.id === this.state.skyThemeId) || themes[0];
+    if (!theme) return;
+    if (this.currentScene === 'public_temple' || this.currentScene === 'changshou_map') {
+      if (this.scene && this.scene.background && this.scene.background.setHex) {
+        this.scene.background.setHex(theme.sky);
+      }
+      if (this.scene && this.scene.fog && this.scene.fog.color && this.scene.fog.color.setHex) {
+        this.scene.fog.color.setHex(theme.fog);
+      }
     }
     if (this.dirLight) {
       this.dirLight.intensity = theme.sunIntensity;
+      if (theme.sunColor !== undefined && this.dirLight.color && this.dirLight.color.setHex) {
+        this.dirLight.color.setHex(theme.sunColor);
+      }
+    }
+    if (this.hemiLight) {
+      if (theme.hemiIntensity !== undefined) this.hemiLight.intensity = theme.hemiIntensity;
+      if (theme.hemiSky !== undefined && this.hemiLight.color && this.hemiLight.color.setHex) {
+        this.hemiLight.color.setHex(theme.hemiSky);
+      }
+      if (theme.hemiGround !== undefined && this.hemiLight.groundColor && this.hemiLight.groundColor.setHex) {
+        this.hemiLight.groundColor.setHex(theme.hemiGround);
+      }
+    }
+    if (this.altarLightCenter) {
+      this.altarLightCenter.intensity = theme.fireflies ? 2.25 : 1.5;
+    }
+    if (this.nightFireflyGroup) {
+      this.nightFireflyGroup.visible = !!theme.fireflies && this.currentScene !== 'personal_space';
+    }
+    const skyBtn = document.getElementById('btn-top-sky-theme');
+    if (skyBtn) {
+      skyBtn.textContent = this.dField(theme, 'name', 'zhName');
+      skyBtn.setAttribute('title', this.t(
+        'Cycle Four Contemplative Atmospheres (Morning / Sun / Dusk / Fireflies)',
+        '点击切换四时禅境光影（晨曦 / 清昼 / 暮辉 / 静夜流萤）'
+      ));
+    }
+  }
+
+  cycleSkyTheme() {
+    const themes = window.GAME_DATA.SKY_THEMES || [];
+    if (themes.length === 0) return;
+    const idx = Math.max(0, themes.findIndex((t) => t.id === this.state.skyThemeId));
+    const next = themes[(idx + 1) % themes.length];
+    this.state.skyThemeId = next.id;
+    this.applySkyTheme();
+    this.saveState();
+    this.showToast(`${this.dField(next, 'name', 'zhName')}`);
+  }
+
+  createNightFireflies() {
+    const grp = new THREE.Group();
+    const orbGeo = new THREE.SphereGeometry(0.085, 6, 4);
+    const orbMat = new THREE.MeshBasicMaterial({
+      color: 0xeaff78,
+      transparent: true,
+      opacity: 0.88
+    });
+    this._fireflySpecs = [];
+    for (let i = 0; i < 38; i++) {
+      const m = new THREE.Mesh(orbGeo, orbMat.clone());
+      const angle = (i / 38) * Math.PI * 2 + (i % 5) * 0.4;
+      const dist = 4.0 + ((i * 7) % 24);
+      const spec = {
+        mesh: m,
+        ox: Math.cos(angle) * dist,
+        oz: Math.sin(angle) * dist,
+        baseH: 0.7 + (i % 6) * 0.55,
+        phase: i * 0.63,
+        speed: 0.75 + (i % 4) * 0.28
+      };
+      m.position.set(spec.ox, spec.baseH, spec.oz);
+      grp.add(m);
+      this._fireflySpecs.push(spec);
+    }
+    grp.visible = false;
+    this.nightFireflyGroup = grp;
+    this.scene.add(grp);
+  }
+
+  createGroundInteractionHalo() {
+    const halo = new THREE.Group();
+    const outerRing = new THREE.Mesh(
+      new THREE.RingGeometry(1.02, 1.24, 32),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd54f,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false
+      })
+    );
+    outerRing.rotation.x = -Math.PI / 2;
+    halo.add(outerRing);
+
+    const innerRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.48, 0.58, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xfff3b0,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.62,
+        depthWrite: false
+      })
+    );
+    innerRing.rotation.x = -Math.PI / 2;
+    halo.add(innerRing);
+
+    const petalGeo = new THREE.ConeGeometry(0.14, 0.34, 4);
+    const petalMat = new THREE.MeshBasicMaterial({
+      color: 0xffe082,
+      transparent: true,
+      opacity: 0.82,
+      depthWrite: false
+    });
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const petal = new THREE.Mesh(petalGeo, petalMat);
+      petal.position.set(Math.cos(a) * 1.15, 0.04, Math.sin(a) * 1.15);
+      petal.rotation.z = -Math.PI / 2;
+      petal.rotation.y = -a;
+      halo.add(petal);
+    }
+
+    halo.visible = false;
+    halo.userData = { outerRing, innerRing };
+    this.groundInteractionHalo = halo;
+    this.scene.add(halo);
+  }
+
+  resolveInteractionHaloTarget() {
+    const GD = window.GAME_DATA;
+    if (this._nearShoeRack) {
+      const rk = this.getNearestShoeRack();
+      if (rk && rk.rack) return { x: rk.rack.x, z: rk.rack.z, scale: 1.0 };
+    }
+    if (this._nearLampWallSide) {
+      return { x: this._nearLampWallSide === 'left' ? -22.2 : 22.2, z: this.playerGroup.position.z, scale: 1.05 };
+    }
+    if (this._nearOfferingTableHall) {
+      if (this._nearOfferingTableHall === 'daxiong') return { x: 0, z: -25.2, scale: 1.45 };
+      if (this._nearOfferingTableHall === 'prayer') return { x: -98.8, z: 4.0, scale: 1.25 };
+      if (this._nearOfferingTableHall === 'wenshu') return { x: 126.1, z: 4.0, scale: 1.2 };
+      if (this._nearOfferingTableHall === 'changshou') return { x: -67.2, z: 4.0, scale: 1.2 };
+    }
+    if (this._nearbyThreeBuddhaIdx !== null && this._nearbyThreeBuddhaIdx !== undefined) {
+      return { x: (this._nearbyThreeBuddhaIdx - 1) * 5.5, z: -33.2, scale: 1.3 };
+    }
+    if (this._nearbyBuddhaIdx !== null && this._nearbyBuddhaIdx !== undefined) {
+      const st = (this.buddhaStatues || [])[this._nearbyBuddhaIdx];
+      if (st) return { x: -102.0, z: st.bz, scale: 1.15 };
+    }
+    if (this._nearManjushri) return { x: 128.5, z: 4.0, scale: 1.35 };
+    if (this._nearChangshou) return { x: -70.6, z: 4.0, scale: 1.35 };
+    if (this._nearbyDeedId) {
+      const deed = (GD.GOOD_DEEDS || []).find((d) => d.id === this._nearbyDeedId);
+      if (deed) return { x: deed.pos.x, z: deed.pos.z, scale: 1.35 };
+    }
+    if (this._nearbyQifoPondId) {
+      const p = (GD.QIFO_LOTUS_PONDS || []).find((item) => item.id === this._nearbyQifoPondId);
+      if (p) return { x: p.x, z: p.z, scale: 1.55 };
+    }
+    if (this._nearbyFlowerGardenId) {
+      const g = (GD.CHANGSHOU_FLOWER_GARDENS || []).find((item) => item.id === this._nearbyFlowerGardenId);
+      if (g) return { x: g.x, z: g.z, scale: 1.45 };
+    }
+    if (this._nearbyLotusPondId) {
+      const p = (GD.CHANGSHOU_LOTUS_PONDS || []).find((item) => item.id === this._nearbyLotusPondId);
+      if (p) return { x: p.x, z: p.z, scale: 1.55 };
+    }
+    if (this._nearStupa && this.stupaPos) return { x: this.stupaPos.x, z: this.stupaPos.z, scale: 1.95 };
+    if (this._nearbySutraId) {
+      const s = (this.sutraStations || []).find((st) => st.book && st.book.id === this._nearbySutraId);
+      if (s && s.book) return { x: s.book.x, z: s.book.z, scale: 1.0 };
+    }
+    if (this._nearBell && GD.BELL_PAVILION_POS) return { x: GD.BELL_PAVILION_POS.x, z: GD.BELL_PAVILION_POS.z, scale: 1.55 };
+    if (this._nearbySeat) return { x: this._nearbySeat.x, z: this._nearbySeat.z, scale: 1.05 };
+    if (this._nearChangshouReturnPortal) return { x: 25.0, z: 4.0, scale: 1.4 };
+    return null;
+  }
+
+  updateGroundInteractionHalo(elapsed) {
+    if (!this.groundInteractionHalo) return;
+    const tgt = !this.cutsceneState && !this._bodhiQuestState ? this.resolveInteractionHaloTarget() : null;
+    if (!tgt) {
+      this.groundInteractionHalo.visible = false;
+      return;
+    }
+    const GD = window.GAME_DATA;
+    const surfaceY = this.currentScene === 'public_temple'
+      ? GD.getSurfaceHeightAt(tgt.x, tgt.z)
+      : this.currentScene === 'changshou_map'
+        ? GD.getChangshouMapSurfaceHeightAt(tgt.x, tgt.z)
+        : 0;
+    this.groundInteractionHalo.visible = true;
+    this.groundInteractionHalo.position.set(tgt.x, surfaceY + 0.09, tgt.z);
+    const pulse = (tgt.scale || 1.0) * (1.0 + Math.sin(elapsed * 3.4) * 0.08);
+    this.groundInteractionHalo.scale.set(pulse, 1.0, pulse);
+    this.groundInteractionHalo.rotation.y = elapsed * 0.65;
+  }
+
+  initMinimap() {
+    const toggleBtn = document.getElementById('btn-toggle-minimap');
+    const wrap = document.getElementById('temple-minimap-wrap');
+    if (toggleBtn && wrap) {
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        wrap.classList.toggle('collapsed');
+        toggleBtn.textContent = wrap.classList.contains('collapsed') ? '+' : '－';
+      });
+    }
+    const canvas = document.getElementById('temple-minimap-canvas');
+    if (!canvas) return;
+    canvas.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!this._minimapProj) return;
+      const rect = canvas.getBoundingClientRect();
+      const cx = ((e.clientX - rect.left) / rect.width) * canvas.width;
+      const cy = ((e.clientY - rect.top) / rect.height) * canvas.height;
+      const { wx, wz } = this._minimapProj.toWorld(cx, cy);
+      const landmarks = this._minimapLandmarks || [];
+      let nearest = null;
+      let minDist = Infinity;
+      landmarks.forEach((lm) => {
+        const d = Math.hypot(lm.x - wx, lm.z - wz);
+        if (d < minDist) {
+          minDist = d;
+          nearest = lm;
+        }
+      });
+      if (nearest && minDist <= (36 / this._minimapProj.scale)) {
+        if (nearest.deedId) {
+          this.activeHintDeedId = nearest.deedId;
+          this.renderGoodDeedsPanel();
+        }
+        const pPos = this.playerGroup.position;
+        const dx = nearest.x - pPos.x;
+        const dz = nearest.z - pPos.z;
+        const meters = Math.round(Math.hypot(dx, dz));
+        const dirZh = Math.abs(dx) >= Math.abs(dz)
+          ? (dx >= 0 ? '东向' : '西向')
+          : (dz < 0 ? '北向' : '南向');
+        const dirEn = Math.abs(dx) >= Math.abs(dz)
+          ? (dx >= 0 ? 'East' : 'West')
+          : (dz < 0 ? 'North' : 'South');
+        this.showToast(this.t(
+          `🧭 ${nearest.en}: ${meters}m ${dirEn} of your position.`,
+          `🧭 方位指引：距离【${nearest.zh}】约 ${meters} 米（${dirZh}）`
+        ));
+        if (nearest.walkable && this.currentScene === 'public_temple') {
+          this.walkTarget = new THREE.Vector3(nearest.x, pPos.y, nearest.z);
+          this.walkWaypoints = [];
+        }
+      }
+    });
+  }
+
+  updateMinimap(force = false) {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (!force && this._lastMinimapDraw && (now - this._lastMinimapDraw) < 70) return;
+    this._lastMinimapDraw = now;
+
+    const canvas = document.getElementById('temple-minimap-canvas');
+    if (!canvas || !canvas.getContext) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const W = canvas.width;
+    const H = canvas.height;
+    const cx = W / 2;
+    const cy = H / 2;
+    const GD = window.GAME_DATA;
+    const pPos = this.playerGroup ? this.playerGroup.position : new THREE.Vector3();
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, cx - 1, 0, Math.PI * 2);
+    ctx.clip();
+
+    let centerX = 8;
+    let centerZ = 24;
+    let scale = 0.44;
+    if (this.currentScene === 'changshou_map') {
+      centerX = -26;
+      centerZ = 4;
+      scale = 0.95;
+    } else if (this.currentScene === 'personal_space') {
+      centerX = 0;
+      centerZ = 0;
+      scale = 3.2;
+    }
+
+    const toPx = (wx, wz) => ({
+      x: cx + (wx - centerX) * scale,
+      y: cy + (wz - centerZ) * scale
+    });
+    const toWorld = (px, py) => ({
+      wx: centerX + (px - cx) / scale,
+      wz: centerZ + (py - cy) / scale
+    });
+    this._minimapProj = { scale, toWorld };
+    this._minimapLandmarks = [];
+
+    // Ground backdrop
+    const bgGrad = ctx.createRadialGradient(cx, cy, 8, cx, cy, cx);
+    bgGrad.addColorStop(0, '#eaf3dc');
+    bgGrad.addColorStop(1, '#c5d9b6');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    if (this.currentScene === 'public_temple') {
+      // Mountain River ribbon
+      ctx.strokeStyle = '#5bb7d8';
+      ctx.lineWidth = 4.2;
+      ctx.beginPath();
+      for (let z = -42; z <= 110; z += 4) {
+        const rx = GD.getRiverCenterX ? GD.getRiverCenterX(z) : 30;
+        const p = toPx(rx, z);
+        if (z === -42) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+
+      // Main East-West & North-South sacred pathways
+      ctx.strokeStyle = 'rgba(182, 146, 98, 0.72)';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      let pA = toPx(0, 105);
+      let pB = toPx(0, -18);
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      pA = toPx(-96, 4);
+      pB = toPx(125, 4);
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+
+      // Uncircled 7 White Stupas
+      (GD.WENSHU_STUPAS || []).forEach((sp, i) => {
+        if (this.state.circledStupas && this.state.circledStupas[i]) return;
+        const p = toPx(sp.x, sp.z);
+        ctx.fillStyle = '#fffdf2';
+        ctx.strokeStyle = '#d4941c';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      // Unplanted 4 Lotus Ponds in front of 七佛殿
+      (GD.QIFO_LOTUS_PONDS || []).forEach((pond) => {
+        const planted = !!(this.state.plantedQifoPonds && this.state.plantedQifoPonds[pond.id]);
+        const p = toPx(pond.x, pond.z);
+        ctx.fillStyle = planted ? '#4caf50' : '#ff6fa5';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Good Deeds dots (gold = remaining, subtle green = done, pulse ring = active hint)
+      (GD.GOOD_DEEDS || []).forEach((deed) => {
+        const done = !!(this.state.completedDeeds && this.state.completedDeeds[deed.id]);
+        const p = toPx(deed.pos.x, deed.pos.z);
+        if (!done) {
+          this._minimapLandmarks.push({
+            x: deed.pos.x,
+            z: deed.pos.z,
+            zh: deed.zhLandmarkName || deed.zhTitle,
+            en: deed.landmarkName || deed.title,
+            deedId: deed.id
+          });
+        }
+        ctx.fillStyle = done ? 'rgba(46, 139, 87, 0.55)' : '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, done ? 1.8 : 2.8, 0, Math.PI * 2);
+        ctx.fill();
+        if (!done && this.activeHintDeedId === deed.id) {
+          ctx.strokeStyle = '#d92b2b';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 4.8, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      });
+
+      // Major Halls & Start
+      const halls = [
+        { x: 0, z: -20, zh: '大雄宝殿', en: 'Grand Hall', color: '#a51c1c', open: this.canEnterPrayerHall() },
+        { x: -96, z: 4, zh: '七佛殿', en: '7-Buddha Hall', color: '#b45309', open: this.canEnterQifoHall() },
+        { x: 125, z: 4, zh: '文殊殿', en: 'Manjushri Hall', color: '#c27803', open: this.canEnterWenshuHall() },
+        { x: 0, z: 105, zh: '山顶起点', en: 'Start', color: '#2e7d32', open: true }
+      ];
+      halls.forEach((h) => {
+        this._minimapLandmarks.push({ x: h.x, z: h.z, zh: h.zh, en: h.en });
+        const p = toPx(h.x, h.z);
+        ctx.fillStyle = h.open ? h.color : '#78716c';
+        ctx.strokeStyle = '#ffd700';
+        ctx.lineWidth = 1.3;
+        ctx.fillRect(p.x - 4, p.y - 4, 8, 8);
+        ctx.strokeRect(p.x - 4, p.y - 4, 8, 8);
+        ctx.fillStyle = '#3b150e';
+        ctx.font = 'bold 8.5px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.isZh() ? h.zh.slice(0, 3) : h.en.slice(0, 6), p.x, p.y - 6);
+      });
+    } else if (this.currentScene === 'changshou_map') {
+      ctx.strokeStyle = '#5bb7d8';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      const sA = toPx(12, -24);
+      const sB = toPx(12, 30);
+      ctx.moveTo(sA.x, sA.y);
+      ctx.lineTo(sB.x, sB.y);
+      ctx.stroke();
+
+      (GD.CHANGSHOU_FLOWER_GARDENS || []).forEach((g) => {
+        const p = toPx(g.x, g.z);
+        ctx.fillStyle = '#f472b6';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      (GD.CHANGSHOU_LOTUS_PONDS || []).forEach((pond) => {
+        const p = toPx(pond.x, pond.z);
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      const cHall = toPx(-66, 4);
+      ctx.fillStyle = '#a51c1c';
+      ctx.strokeStyle = '#ffd700';
+      ctx.fillRect(cHall.x - 5, cHall.y - 5, 10, 10);
+      ctx.strokeRect(cHall.x - 5, cHall.y - 5, 10, 10);
+      this._minimapLandmarks.push({ x: -66, z: 4, zh: '长寿殿', en: 'Longevity Hall' });
+    } else {
+      const c0 = toPx(0, 0);
+      ctx.strokeStyle = '#c98824';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(c0.x, c0.y, 16.5 * scale, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Player Marker + Camera Forward FOV Cone
+    const pp = toPx(pPos.x, pPos.z);
+    const camFwdX = -Math.sin(this.cameraAngle);
+    const camFwdZ = -Math.cos(this.cameraAngle);
+    const fovAngle = Math.atan2(camFwdZ, camFwdX);
+
+    ctx.fillStyle = 'rgba(255, 208, 64, 0.36)';
+    ctx.beginPath();
+    ctx.moveTo(pp.x, pp.y);
+    ctx.arc(pp.x, pp.y, 22, fovAngle - 0.42, fovAngle + 0.42);
+    ctx.closePath();
+    ctx.fill();
+
+    // Player Forward Facing Arrow + Ruby Center Dot
+    const faceX = Math.sin(this.playerGroup ? this.playerGroup.rotation.y : Math.PI);
+    const faceZ = Math.cos(this.playerGroup ? this.playerGroup.rotation.y : Math.PI);
+    ctx.strokeStyle = '#8b1111';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pp.x, pp.y);
+    ctx.lineTo(pp.x + faceX * 8, pp.y + faceZ * 8);
+    ctx.stroke();
+
+    ctx.fillStyle = '#e11d48';
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(pp.x, pp.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Update Minimap Zone Caption
+    const lbl = document.getElementById('minimap-zone-label');
+    if (lbl) {
+      let zoneZh = '水月禅境';
+      let zoneEn = 'Monastery Valley';
+      if (this.currentScene === 'changshou_map') {
+        zoneZh = '长寿殿圣境';
+        zoneEn = 'Longevity Map';
+      } else if (this.currentScene === 'personal_space') {
+        zoneZh = '个人道场';
+        zoneEn = 'My Sanctuary';
+      } else if (pPos.x > 40) {
+        zoneZh = '东峰·五台文殊山';
+        zoneEn = 'East · Mt. Wutai';
+      } else if (pPos.x < -30) {
+        zoneZh = '西山·七佛花道';
+        zoneEn = 'West · 7-Buddha Peak';
+      } else if (pPos.z < 5) {
+        zoneZh = '中轴·大雄宝殿';
+        zoneEn = 'Grand Hall Court';
+      } else if (pPos.z > 75) {
+        zoneZh = '山顶家园起点';
+        zoneEn = 'Mountain Start';
+      }
+      lbl.textContent = `🧭 ${this.t(zoneEn, zoneZh)}`;
     }
   }
 
@@ -813,10 +1332,9 @@ class BuddhistPracticeGame {
     this.shoeRacks = [];
 
     const defs = [
-      { key: 'daxiong', x: -6.2, y: 0.35, z: 2.3, rotY: 0, entryX: 0, entryY: 0.35, entryZ: -4.0, exitX: 0, exitY: 0.1, exitZ: 4.5 },
-      { key: 'qifo', x: 112.0, y: 16.5, z: -42.5, rotY: Math.PI / 2, entryX: 118.0, entryY: 16.82, entryZ: -37.0, exitX: 111.5, exitY: 16.5, exitZ: -37.0 },
-      { key: 'wenshu', x: 112.0, y: 16.5, z: -1.5, rotY: Math.PI / 2, entryX: 118.0, entryY: 16.82, entryZ: 4.0, exitX: 111.5, exitY: 16.5, exitZ: 4.0 },
-      { key: 'changshou', x: -84.0, y: 16.5, z: 9.5, rotY: -Math.PI / 2, entryX: -90.0, entryY: 16.92, entryZ: 4.0, exitX: -83.5, exitY: 16.5, exitZ: 4.0 }
+      { key: 'daxiong', scene: 'public_temple', x: -6.2, y: 0.35, z: 2.3, rotY: 0, entryX: 0, entryY: 0.35, entryZ: -4.0, exitX: 0, exitY: 0.1, exitZ: 4.5 },
+      { key: 'qifo', scene: 'public_temple', x: -84.0, y: 16.5, z: 9.5, rotY: -Math.PI / 2, entryX: -90.0, entryY: 16.88, entryZ: 4.0, exitX: -83.5, exitY: 16.5, exitZ: 4.0 },
+      { key: 'wenshu', scene: 'public_temple', x: 112.0, y: 16.5, z: -1.5, rotY: Math.PI / 2, entryX: 118.0, entryY: 16.82, entryZ: 4.0, exitX: 111.5, exitY: 16.5, exitZ: 4.0 }
     ];
     defs.forEach((d) => {
       const rkMesh = window.TempleModels3D.createShoeRackModel(d.key);
@@ -826,7 +1344,7 @@ class BuddhistPracticeGame {
       const lbl = this.addWorldLabel(
         this.state.wearingShoes ? '👟 Take Off Shoes (Enter Hall)' : '👞 Put Shoes Back On',
         new THREE.Vector3(d.x, d.y + 2.3, d.z),
-        'public_temple',
+        d.scene,
         () => {
           if (this.state.wearingShoes) this.takeOffShoesForHall(d.key);
           else this.putShoesBackOn();
@@ -859,7 +1377,7 @@ class BuddhistPracticeGame {
     return g;
   }
 
-  // -------------------- RELOCATED 七佛殿 ATOP SEVEN-BUDDHA MOUNTAIN (x = 124, y = 16.5, z = -37) --------------------
+  // -------------------- RELOCATED 七佛殿 ATOP WEST SEVEN-BUDDHA MOUNTAIN (x = -96, y = 16.5, z = 4.0, facing East +X) --------------------
   rebuildSevenBuddhasAltar() {
     while (this.sevenBuddhasGroup.children.length > 0) {
       this.sevenBuddhasGroup.remove(this.sevenBuddhasGroup.children[0]);
@@ -869,7 +1387,7 @@ class BuddhistPracticeGame {
     const qifoY = 16.5;
     const matPreset = window.GAME_DATA.BUDDHA_MATERIALS.find((m) => m.id === this.state.buddhaMatId) || window.GAME_DATA.BUDDHA_MATERIALS[0];
     this.qifoHallGroup = window.TempleModels3D.createSevenBuddhasMountainHallModel(window.GAME_DATA.SEVEN_BUDDHAS, matPreset);
-    this.qifoHallGroup.position.set(124.0, qifoY, -37.0);
+    this.qifoHallGroup.position.set(-96.0, qifoY, 4.0);
     this.sevenBuddhasGroup.add(this.qifoHallGroup);
 
     const qud = this.qifoHallGroup.userData || {};
@@ -881,32 +1399,30 @@ class BuddhistPracticeGame {
     });
 
     this.qifoSeats = (qud.seatPositions || []).map((sp) => ({
-      pos: new THREE.Vector3(124.0 + sp.lx, 16.88, -37.0 + sp.lz),
+      pos: new THREE.Vector3(-96.0 + sp.lx, 16.88, 4.0 + sp.lz),
       mesh: sp.mesh
     }));
 
     (qud.buddhaStatues || []).forEach((bs) => {
-      const worldZ = -37.0 + bs.bz;
+      const worldZ = 4.0 + bs.bz;
       this.buddhaStatues.push({
         idx: bs.idx,
-        bx: 131.4,
+        bx: -103.4,
         bz: worldZ,
         data: bs.data,
         mesh: bs.mesh,
-        pos: new THREE.Vector3(131.4, qifoY, worldZ),
-        worldPos: new THREE.Vector3(131.4, qifoY, worldZ)
+        pos: new THREE.Vector3(-103.4, qifoY, worldZ),
+        worldPos: new THREE.Vector3(-103.4, qifoY, worldZ)
       });
     });
-
-    this.rebuildSevenBuddhaBridge();
 
     if (!this._buddhaLabelsCreated) {
       this._buddhaLabelsCreated = true;
       window.GAME_DATA.SEVEN_BUDDHAS.forEach((bData, idx) => {
-        const worldZ = -37.0 + (idx - 3) * 3.45;
+        const worldZ = 4.0 + (3 - idx) * 3.45;
         const labelEl = this.addWorldLabel(
           `🙏 ${idx + 1}. ${bData.cnName || bData.name}`,
-          new THREE.Vector3(131.4, qifoY + (idx === 3 ? 8.6 : 7.8), worldZ),
+          new THREE.Vector3(-103.4, qifoY + (idx === 3 ? 8.6 : 7.8), worldZ),
           'public_temple',
           () => this.bowToSpecificBuddhaQuest(idx)
         );
@@ -915,21 +1431,21 @@ class BuddhistPracticeGame {
       });
       this.addWorldLabel(
         '⛩️ 7-Buddha Hall (七佛殿)',
-        new THREE.Vector3(114.2, qifoY + 7.2, -37.0),
+        new THREE.Vector3(-87.0, qifoY + 7.2, 4.0),
         'public_temple',
         () => this.teleportToQifoHallInterior(),
         '⛩️ 七佛山巅 · 七佛殿'
       );
       this.addWorldLabel(
         '🧘 9 Meditation Mats',
-        new THREE.Vector3(120.5, qifoY + 1.9, -37.0),
+        new THREE.Vector3(-92.5, qifoY + 1.9, 4.0),
         'public_temple',
         () => this.handlePrayerHallAction(1),
         '🧘 七佛殿禅坐垫'
       );
       this.addWorldLabel(
         '🪔 7-Buddha Offering Table',
-        new THREE.Vector3(126.8, qifoY + 2.8, -37.0),
+        new THREE.Vector3(-98.8, qifoY + 2.8, 4.0),
         'public_temple',
         () => this.showToast(this.t(
           '🙏 Use 3. Offer Water, 4. Offer Flower, or 5. Offer Scent from the Hall action bar below (+10 VP each)',
@@ -939,7 +1455,7 @@ class BuddhistPracticeGame {
       );
       this.addWorldLabel(
         '⛰️ Teleport to Starting Point',
-        new THREE.Vector3(112.5, qifoY + 3.2, -33.0),
+        new THREE.Vector3(-85.5, qifoY + 3.2, 4.0),
         'public_temple',
         () => this.teleportToStartingPoint(),
         '⛰️ 传送回起点'
@@ -1143,48 +1659,79 @@ class BuddhistPracticeGame {
       '🌱 个人清净道场'
     );
 
-    // 6. West Longevity Sanctuary Avenue: Flower Gardens (百花善园), 3 Lotus Ponds (三座莲花池) & 长寿殿 (Longevity Hall)
+    // 6. West Seven-Buddha Mountain Stairway & Open Summit Plaza (Leading to Relocated 七佛殿 at x = -96, z = 4)
     const westWalkway = window.TempleModels3D.createWestGardenWalkwayModel();
     this.publicTempleGroup.add(westWalkway);
 
+    // 7. 4 Interactive Sacred Lotus Pond Quests along the West Stairway to 七佛殿 (+5 VP each!)
+    this.qifoPondStations = [];
+    (window.GAME_DATA.QIFO_LOTUS_PONDS || []).forEach((pd) => {
+      const py = window.GAME_DATA.getTerrainHeight(pd.x, 2.8) + 0.04;
+      const mesh = window.TempleModels3D.createWestLotusPondModel(pd);
+      mesh.position.set(pd.x, py, pd.z);
+      const isPlanted = !!(this.state.plantedQifoPonds && this.state.plantedQifoPonds[pd.id]);
+      if (mesh.userData.unplantedGroup) mesh.userData.unplantedGroup.visible = !isPlanted;
+      if (mesh.userData.plantedGroup) mesh.userData.plantedGroup.visible = isPlanted;
+      this.publicTempleGroup.add(mesh);
+
+      const enText = isPlanted ? `✅ ${pd.name}` : `🪷 ${pd.name} (+5 VP)`;
+      const zhText = isPlanted ? `✅ ${pd.zhName}` : `🪷 ${pd.zhName} (+5 功德)`;
+      const lbl = this.addWorldLabel(enText, new THREE.Vector3(pd.x, py + 2.4, pd.z), 'public_temple', () => this.plantQifoLotusPond(pd.id), zhText);
+      if (isPlanted) lbl.classList.add('completed');
+      this.qifoPondStations.push({ pond: pd, group: mesh, labelEl: lbl });
+    });
+  }
+
+  // -------------------- STOP #1 MAP SCENE: 长寿殿 (LONGEVITY SANCTUARY MAP) --------------------
+  buildChangshouMapScene() {
+    if (!this.changshouMapGroup) return;
+    while (this.changshouMapGroup.children.length > 0) {
+      this.changshouMapGroup.remove(this.changshouMapGroup.children[0]);
+    }
+
+    const terrain = window.TempleModels3D.createChangshouMapTerrain();
+    this.changshouMapGroup.add(terrain);
+
+    // 3 Flower Gardens along the ascending Longevity Avenue
     this.flowerGardenStations = [];
     (window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || []).forEach((gd, idx) => {
-      const gy = window.GAME_DATA.getTerrainHeight(gd.x, gd.z);
+      const gy = window.GAME_DATA.getChangshouMapTerrainHeight(gd.x, gd.z);
       const mesh = window.TempleModels3D.createWestFlowerGardenBedModel(gd, idx);
       mesh.position.set(gd.x, gy, gd.z);
       const isPlanted = !!(this.state.plantedFlowerGardens && this.state.plantedFlowerGardens[gd.id]);
       if (mesh.userData.unplantedGroup) mesh.userData.unplantedGroup.visible = !isPlanted;
       if (mesh.userData.plantedGroup) mesh.userData.plantedGroup.visible = isPlanted;
-      this.publicTempleGroup.add(mesh);
+      this.changshouMapGroup.add(mesh);
 
       const enText = isPlanted ? `✅ ${gd.name}` : `🌸 ${gd.name}`;
       const zhText = isPlanted ? `✅ ${gd.zhName}` : `🌸 ${gd.zhName}`;
-      const lbl = this.addWorldLabel(enText, new THREE.Vector3(gd.x, gy + 2.3, gd.z), 'public_temple', () => this.plantFlowerGarden(gd.id), zhText);
+      const lbl = this.addWorldLabel(enText, new THREE.Vector3(gd.x, gy + 2.3, gd.z), 'changshou_map', () => this.plantFlowerGarden(gd.id), zhText);
       if (isPlanted) lbl.classList.add('completed');
       this.flowerGardenStations.push({ garden: gd, group: mesh, labelEl: lbl });
     });
 
+    // 4 Sacred Lotus Ponds (优钵罗花, 波头摩, 分陀利花, 拘物头花)
     this.lotusPondStations = [];
     (window.GAME_DATA.CHANGSHOU_LOTUS_PONDS || []).forEach((pd) => {
-      const py = window.GAME_DATA.getTerrainHeight(pd.x, pd.z);
+      const py = window.GAME_DATA.getChangshouMapTerrainHeight(pd.x, pd.z);
       const mesh = window.TempleModels3D.createWestLotusPondModel(pd);
       mesh.position.set(pd.x, py, pd.z);
       const isPlanted = !!(this.state.plantedLotusPonds && this.state.plantedLotusPonds[pd.id]);
       if (mesh.userData.unplantedGroup) mesh.userData.unplantedGroup.visible = !isPlanted;
       if (mesh.userData.plantedGroup) mesh.userData.plantedGroup.visible = isPlanted;
-      this.publicTempleGroup.add(mesh);
+      this.changshouMapGroup.add(mesh);
 
       const enText = isPlanted ? `✅ ${pd.name}` : `🪷 ${pd.name}`;
       const zhText = isPlanted ? `✅ ${pd.zhName}` : `🪷 ${pd.zhName}`;
-      const lbl = this.addWorldLabel(enText, new THREE.Vector3(pd.x, py + 2.4, pd.z), 'public_temple', () => this.plantLotusPond(pd.id), zhText);
+      const lbl = this.addWorldLabel(enText, new THREE.Vector3(pd.x, py + 2.4, pd.z), 'changshou_map', () => this.plantLotusPond(pd.id), zhText);
       if (isPlanted) lbl.classList.add('completed');
       this.lotusPondStations.push({ pond: pd, group: mesh, labelEl: lbl });
     });
 
-    // 长寿殿 (Longevity Hall) atop West Longevity Mountain Summit (y = 16.5, matching 文殊殿) facing East (+X)
+    // 长寿殿 (Longevity Hall) atop the Longevity Sanctuary Summit (x = -66, y = 16.5, z = 4.0)
     const changshouY = 16.5;
     this.changshouHallGroup = window.TempleModels3D.createChangshouHallAndStatueModel();
-    this.changshouHallGroup.position.set(-96.0, changshouY, 4.0);
+    this.changshouHallGroup.position.set(-66.0, changshouY, 4.0);
     const co = this.state.changshouOfferings || {};
     if (this.changshouHallGroup.userData && this.changshouHallGroup.userData.offeringMeshes) {
       ['water', 'flower', 'scent'].forEach((k) => {
@@ -1194,31 +1741,80 @@ class BuddhistPracticeGame {
     }
     this.changshouSeats = ((this.changshouHallGroup.userData && this.changshouHallGroup.userData.seatPositions) || []).map((sp) => ({
       idx: sp.idx,
-      x: -96.0 + sp.lx,
+      x: -66.0 + sp.lx,
       y: changshouY + 0.42,
       z: 4.0 + sp.lz,
       mesh: sp.mesh
     }));
-    this.publicTempleGroup.add(this.changshouHallGroup);
+    this.changshouMapGroup.add(this.changshouHallGroup);
+
+    // Shoe Shelf right outside 长寿殿 entrance
+    const csRack = window.TempleModels3D.createShoeRackModel('changshou');
+    csRack.position.set(-54.0, changshouY, 9.5);
+    csRack.rotation.y = -Math.PI / 2;
+    this.changshouMapGroup.add(csRack);
+    const csRackLbl = this.addWorldLabel(
+      this.state.wearingShoes ? '👟 Take Off Shoes (Enter Hall)' : '👞 Put Shoes Back On',
+      new THREE.Vector3(-54.0, changshouY + 2.3, 9.5),
+      'changshou_map',
+      () => {
+        if (this.state.wearingShoes) this.takeOffShoesForHall('changshou');
+        else this.putShoesBackOn();
+      },
+      this.state.wearingShoes ? '👟 鞋架 · 脱鞋入殿' : '👞 鞋架 · 穿鞋续行'
+    );
+    if (!this.shoeRacks) this.shoeRacks = [];
+    this.shoeRacks.push({
+      key: 'changshou',
+      scene: 'changshou_map',
+      x: -54.0,
+      y: changshouY,
+      z: 9.5,
+      rotY: -Math.PI / 2,
+      entryX: -60.0,
+      entryY: 16.92,
+      entryZ: 4.0,
+      exitX: -53.5,
+      exitY: 16.5,
+      exitZ: 4.0,
+      group: csRack,
+      labelEl: csRackLbl
+    });
+
+    // Return Portal at map entrance
+    const backPortal = new THREE.Mesh(
+      new THREE.TorusGeometry(1.65, 0.18, 12, 24),
+      new THREE.MeshPhongMaterial({ color: 0xf4b942 })
+    );
+    backPortal.position.set(28.0, 1.8, 4.0);
+    backPortal.rotation.y = Math.PI / 2;
+    this.changshouMapGroup.add(backPortal);
 
     this.addWorldLabel(
+      '⛩️ Return to Main Map',
+      new THREE.Vector3(28.0, 3.9, 4.0),
+      'changshou_map',
+      () => this.switchScene('public_temple'),
+      '⛩️ 返回主地图'
+    );
+    this.addWorldLabel(
       '🏺 Longevity Hall (长寿殿)',
-      new THREE.Vector3(-87.0, changshouY + 7.2, 4.0),
-      'public_temple',
+      new THREE.Vector3(-57.0, changshouY + 7.2, 4.0),
+      'changshou_map',
       () => this.teleportToChangshouHallInterior(),
-      '🏺 长寿山巅 · 长寿殿'
+      '🏺 长寿圣境 · 长寿殿'
     );
     this.addWorldLabel(
       '🧘 20 Meditation Mats',
-      new THREE.Vector3(-91.8, changshouY + 1.9, 4.0),
-      'public_temple',
+      new THREE.Vector3(-61.8, changshouY + 1.9, 4.0),
+      'changshou_map',
       () => this.handlePrayerHallAction(1),
       '🧘 长寿殿禅坐垫 (20座)'
     );
     this.addWorldLabel(
       '🪔 Changshou Offering Table',
-      new THREE.Vector3(-98.2, changshouY + 2.8, 4.0),
-      'public_temple',
+      new THREE.Vector3(-68.2, changshouY + 2.8, 4.0),
+      'changshou_map',
       () => this.showToast(this.t(
         '🙏 Use 3. Offer Water, 4. Offer Flower, or 5. Offer Scent from the Hall action bar below (+10 VP each)',
         '🙏 请在下方长寿殿动作栏选择：3. 佛前供水、4. 佛前供花 或 5. 佛前供香（每项 +10 功德）'
@@ -1227,18 +1823,19 @@ class BuddhistPracticeGame {
     );
     this.addWorldLabel(
       '🏺 Amitayus · Longevity Buddha',
-      new THREE.Vector3(-101.4, changshouY + 6.0, 4.0),
-      'public_temple',
+      new THREE.Vector3(-71.4, changshouY + 6.0, 4.0),
+      'changshou_map',
       () => this.bowToChangshouQuest(),
       '🏺 无量寿智如来 · 长寿佛'
     );
     this.addWorldLabel(
-      '⛰️ Teleport to Starting Point',
-      new THREE.Vector3(-85.5, changshouY + 3.0, 4.0),
-      'public_temple',
-      () => this.teleportToStartingPoint(),
-      '⛰️ 传送回起点'
+      '⛰️ Return to Main Map',
+      new THREE.Vector3(-55.5, changshouY + 3.0, 4.0),
+      'changshou_map',
+      () => this.switchScene('public_temple'),
+      '⛰️ 返回主地图'
     );
+    this.syncShoeVisuals();
   }
 
   // -------------------- GRAND HALL & 7-BUDDHA HALL TABLES / MATS ARE BUILT INSIDE THEIR RESPECTIVE ARCHITECTURES --------------------
@@ -1723,7 +2320,9 @@ class BuddhistPracticeGame {
   }
 
   dropLotusFootprint() {
-    if (this.currentScene !== 'public_temple') return;
+    if (this.currentScene !== 'public_temple' && this.currentScene !== 'changshou_map') return;
+    const hostGroup = this.currentScene === 'changshou_map' ? this.changshouMapGroup : this.publicTempleGroup;
+    if (!hostGroup) return;
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.18, 0.36, 12),
       new THREE.MeshBasicMaterial({
@@ -1739,7 +2338,7 @@ class BuddhistPracticeGame {
       this.playerGroup.position.y + 0.04,
       this.playerGroup.position.z
     );
-    this.publicTempleGroup.add(ring);
+    hostGroup.add(ring);
     this.lotusFootprints.push({ mesh: ring, age: 0 });
   }
 
@@ -1767,10 +2366,8 @@ class BuddhistPracticeGame {
     if (dist > 8.2) {
       this.activeHintDeedId = deed.id;
       this.updateHUD();
-      const walkX = (deed.id === 'build_wisdom_bridge' || deed.id === 'build_seven_buddha_bridge') ? 23.0 : deed.pos.x;
-      const walkZ = deed.id === 'build_wisdom_bridge'
-        ? 4.0
-        : (deed.id === 'build_seven_buddha_bridge' ? -37.0 : deed.pos.z + 2.2);
+      const walkX = deed.id === 'build_wisdom_bridge' ? 23.0 : deed.pos.x;
+      const walkZ = deed.id === 'build_wisdom_bridge' ? 4.0 : deed.pos.z + 2.2;
       this.walkToAndTrigger(
         new THREE.Vector3(walkX, terrainY, walkZ),
         () => {
@@ -1820,11 +2417,9 @@ class BuddhistPracticeGame {
       }
     }
 
-    // Rebuild Wisdom Bridge or Seven-Buddha Bridge across the East River immediately upon completing the Bridge Quest!
+    // Rebuild Wisdom Bridge across the East River immediately upon completing the Bridge Quest!
     if (deedId === 'build_wisdom_bridge') {
       this.rebuildWisdomBridge();
-    } else if (deedId === 'build_seven_buddha_bridge') {
-      this.rebuildSevenBuddhaBridge();
     }
 
     // Rescued Animal Companions join the player!
@@ -1870,49 +2465,54 @@ class BuddhistPracticeGame {
     }
   }
 
-  // -------------------- BODHI WISHING TREE: SELECT & HANG WISHES ON THE TREE (VISIBLE TO OTHERS!) --------------------
+  // -------------------- BODHI WISHING TREE: BODHI LEAF WISHES + FLYING LEAF QUEST VIEW --------------------
   createWishPlaqueTexture(emoji, shortTitle, authorName) {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 384;
     const ctx = canvas.getContext('2d');
 
-    // Crimson & Gold Wooden Wish Plaque Background
+    // Luminous Emerald-Jade & Gold Bodhi Leaf Canvas Texture
     const grad = ctx.createLinearGradient(0, 0, 0, 384);
-    grad.addColorStop(0, '#a81c24');
-    grad.addColorStop(1, '#6e0f15');
+    grad.addColorStop(0, '#52b788');
+    grad.addColorStop(0.55, '#2d6a4f');
+    grad.addColorStop(1, '#1b4332');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 256, 384);
 
-    // Ornate Gold Border
-    ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 12;
-    ctx.strokeRect(10, 10, 236, 364);
-
-    // Top Gold Header Bar
-    ctx.fillStyle = '#ffd166';
-    ctx.fillRect(16, 16, 224, 52);
-    ctx.fillStyle = '#5a1010';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('🌟 BODHI WISH', 128, 50);
+    // Subtle Golden Leaf Veins
+    ctx.strokeStyle = 'rgba(255, 224, 130, 0.48)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(128, 20);
+    ctx.lineTo(128, 368);
+    ctx.stroke();
+    [110, 175, 240, 305].forEach((vy) => {
+      ctx.beginPath();
+      ctx.moveTo(128, vy);
+      ctx.quadraticCurveTo(78, vy - 22, 34, vy - 36);
+      ctx.moveTo(128, vy);
+      ctx.quadraticCurveTo(178, vy - 22, 222, vy - 36);
+      ctx.stroke();
+    });
 
     // Wish Emoji
-    ctx.font = '64px sans-serif';
-    ctx.fillText(emoji || '🌟', 128, 145);
+    ctx.textAlign = 'center';
+    ctx.font = '60px sans-serif';
+    ctx.fillText(emoji || '🍃', 128, 165);
 
     // Wrapped Wish Title
-    ctx.fillStyle = '#fff8dc';
-    ctx.font = 'bold 25px sans-serif';
+    ctx.fillStyle = '#fffbe6';
+    ctx.font = 'bold 23px sans-serif';
     const words = (shortTitle || '').split(' ');
     let line = '';
-    let y = 205;
+    let y = 218;
     for (let i = 0; i < words.length; i++) {
       const testLine = line + words[i] + ' ';
-      if (ctx.measureText(testLine).width > 205 && i > 0) {
+      if (ctx.measureText(testLine).width > 188 && i > 0) {
         ctx.fillText(line.trim(), 128, y);
         line = words[i] + ' ';
-        y += 32;
+        y += 29;
       } else {
         line = testLine;
       }
@@ -1921,12 +2521,13 @@ class BuddhistPracticeGame {
       ctx.fillText(line.trim(), 128, y);
     }
 
-    // Author Footer ("By: PlayerName")
-    ctx.fillStyle = '#ffe082';
-    ctx.font = 'bold 20px sans-serif';
-    ctx.fillText(`— ${authorName || 'Little Lotus'} —`, 128, 348);
+    // Author Footer
+    ctx.fillStyle = '#fde68a';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(`— ${authorName || 'Little Lama'} —`, 128, 326);
 
     const tex = new THREE.CanvasTexture(canvas);
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
     tex.needsUpdate = true;
     return tex;
   }
@@ -1961,73 +2562,65 @@ class BuddhistPracticeGame {
     const deedPos = treeStation.deed.pos;
     const terrainY = window.GAME_DATA.getTerrainHeight(deedPos.x, deedPos.z);
 
-    // Update the main Bodhi Wishing Tree label to show how many wishes are hanging on the tree
     if (treeStation.labelEl) {
       if (hungWishes.length > 0) {
-        treeStation.labelEl.innerHTML = `🌳 Bodhi Wishing Tree (${hungWishes.length} ${hungWishes.length === 1 ? 'Wish' : 'Wishes'} Hung ✨)`;
+        treeStation.labelEl.innerHTML = this.t(
+          `🍃 Vajrasana Bodhi Tree (${hungWishes.length} Leaf Wishes ✨)`,
+          `🍃 金刚座菩提树 (${hungWishes.length} 片愿叶 ✨)`
+        );
         treeStation.labelEl.classList.add('completed');
       }
     }
 
-    // Branch anchor positions around the Bodhi Tree canopy so each of the 8 wishes hangs visibly on its own branch!
+    // Branch anchor positions around the Bodhi Tree canopy
     const branchSlots = [
-      { angle: -0.95, radius: 2.55, y: 3.35, labelLift: 0.55 },
-      { angle: -0.32, radius: 2.65, y: 3.85, labelLift: 1.05 },
-      { angle: 0.32, radius: 2.65, y: 3.45, labelLift: 0.65 },
-      { angle: 0.95, radius: 2.55, y: 3.95, labelLift: 1.15 },
-      { angle: 1.58, radius: 2.50, y: 3.50, labelLift: 0.70 },
-      { angle: 2.22, radius: 2.55, y: 4.05, labelLift: 1.25 },
-      { angle: 2.85, radius: 2.60, y: 3.55, labelLift: 0.75 },
-      { angle: -1.58, radius: 2.50, y: 4.10, labelLift: 1.30 }
+      { angle: -0.95, radius: 2.65, y: 3.45 },
+      { angle: -0.32, radius: 2.75, y: 3.95 },
+      { angle: 0.32, radius: 2.75, y: 3.55 },
+      { angle: 0.95, radius: 2.65, y: 4.05 },
+      { angle: 1.58, radius: 2.60, y: 3.60 },
+      { angle: 2.22, radius: 2.65, y: 4.15 },
+      { angle: 2.85, radius: 2.70, y: 3.65 },
+      { angle: -1.58, radius: 2.60, y: 4.20 }
     ];
+    this._bodhiBranchSlots = branchSlots;
 
     const goldCordMat = new THREE.MeshBasicMaterial({ color: 0xffd166 });
-    const tasselMat = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
-    const woodEdgeMat = new THREE.MeshLambertMaterial({ color: 0xd4941c });
 
     hungWishes.forEach((wish, i) => {
       const slot = branchSlots[i % branchSlots.length];
       const bx = Math.sin(slot.angle) * slot.radius;
-      const bz = Math.cos(slot.angle) * slot.radius;
+      const bz = Math.cos(slot.angle) * slot.radius - 0.35;
 
       const plaquePivot = new THREE.Group();
       plaquePivot.position.set(bx, slot.y, bz);
       plaquePivot.rotation.y = slot.angle;
 
-      // Golden Silk Hanging Cord tied to branch
-      const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.65, 6), goldCordMat);
-      cord.position.y = -0.32;
+      // Fine golden silk thread holding the Bodhi Leaf
+      const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.52, 6), goldCordMat);
+      cord.position.y = -0.26;
       plaquePivot.add(cord);
 
-      // 3D Wooden & Gold Wish Plaque with Canvas Texture on Front & Back
-      const shortTitle = wish.title.replace(/^\d+\.\s*/, '');
+      // Sculpted 3D Bodhi Leaf carrying the Wish!
+      const shortTitle = (this.isZh() ? (wish.zhTitle || wish.title) : wish.title).replace(/^\d+\.\s*/, '');
       const author = (typeof selectedMap[wish.id] === 'string' && selectedMap[wish.id]) ? selectedMap[wish.id] : this.state.playerName;
       const plaqueTex = this.createWishPlaqueTexture(wish.emoji, shortTitle, author);
-      const faceMat = new THREE.MeshBasicMaterial({ map: plaqueTex });
-      const plaqueMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.68, 0.98, 0.06),
-        [woodEdgeMat, woodEdgeMat, woodEdgeMat, woodEdgeMat, faceMat, faceMat]
-      );
-      plaqueMesh.position.y = -0.82;
-      plaquePivot.add(plaqueMesh);
+      const leafWishMesh = window.TempleModels3D.createBodhiWishLeafMesh(plaqueTex, 0.92);
+      leafWishMesh.position.y = -0.95;
+      plaquePivot.add(leafWishMesh);
 
-      // Swaying Red Silk Tassel under the Plaque
-      const tassel = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.42, 8), tasselMat);
-      tassel.position.y = -1.48;
-      plaquePivot.add(tassel);
-
-      // Subtle glowing golden aura sphere around the hung wish
+      // Warm golden Bodhi dew-drop glow above the leaf stem
       const glowOrb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.14, 8, 8),
+        new THREE.SphereGeometry(0.11, 8, 8),
         new THREE.MeshBasicMaterial({ color: 0xffe66d })
       );
-      glowOrb.position.y = -0.22;
+      glowOrb.position.y = -0.18;
       plaquePivot.add(glowOrb);
 
       plaquePivot.userData.swayPhase = i * 0.9;
+      plaquePivot.userData.wishId = wish.id;
       this.wishingTreePlaquesGroup.add(plaquePivot);
 
-      // Add a visible floating Wish Ribbon Tag in 3D space on the tree so other players/viewers can read the wish!
       const worldTagPos = new THREE.Vector3(
         deedPos.x + bx,
         terrainY + slot.y - 0.55,
@@ -2038,14 +2631,15 @@ class BuddhistPracticeGame {
         worldTagPos,
         'public_temple',
         () => {
-          window.templeAudio.speakText(`${shortTitle}, wished by ${author}. ${wish.detail}`, true);
-          this.showToast(`🌳🌟 Wish on Bodhi Tree by ${author}: "${shortTitle}" — "${wish.detail}"`);
+          const detail = this.dField(wish, 'detail', 'zhDetail');
+          window.templeAudio.speakText(`${shortTitle}, ${author}. ${detail}`, true);
+          this.showToast(`🍃🌟 ${author}: "${shortTitle}" — "${detail}"`);
         }
       );
       tagEl.classList.add('wish-ribbon-tag');
       const labelItem = this.worldLabelItems[this.worldLabelItems.length - 1];
       if (labelItem) {
-        labelItem.maxDist = 34.0; // Visible from across the courtyard so others can see all wishes on the tree!
+        labelItem.maxDist = 34.0;
         this.wishingTreeLabelItems.push(labelItem);
       }
     });
@@ -2057,26 +2651,107 @@ class BuddhistPracticeGame {
     if (!chosen) return;
 
     this._selectedWishId = chosen.id;
-    this.state.wishesSelected[chosen.id] = this.state.playerName || 'Little Lotus';
+    this.state.wishesSelected[chosen.id] = this.state.playerName || this.t('Little Lama', '小沙弥');
 
     const deed = window.GAME_DATA.GOOD_DEEDS.find((d) => d.id === 'good_wishes');
     if (deed) {
       const firstTime = !this.state.completedDeeds['good_wishes'];
+      const shortTitle = (this.isZh() ? (chosen.zhTitle || chosen.title) : chosen.title).replace(/^\d+\.\s*/, '');
       this.completeGoodDeedReward(
         deed,
-        firstTime ? `${chosen.emoji} ${chosen.title} (+2 VP)!` : `${chosen.emoji} Hung on Tree!`
+        firstTime ? `${chosen.emoji} ${shortTitle} (+2 VP)!` : `🍃 ${shortTitle}`
       );
       this.rebuildWishingTreePlaques();
       this.saveState();
-      this.showToast(
-        `🌳🌟 Hung "${chosen.title.replace(/^\d+\.\s*/, '')}" (by ${this.state.playerName}) on the Bodhi Wishing Tree for everyone to see!`
-      );
+      this.showToast(this.t(
+        `🍃🌟 Sent "${shortTitle}" on a Bodhi leaf up into the Vajrasana Bodhi Tree!`,
+        `🍃🌟 「${shortTitle}」已化作金色菩提叶，随微风飞上金刚座菩提树！`
+      ));
     }
 
     if (closeAfter) {
       const modal = document.getElementById('wishing-tree-modal');
       if (modal) modal.classList.add('hidden');
     }
+    this.startBodhiWishQuestView(chosen);
+  }
+
+  startBodhiWishQuestView(chosenWish) {
+    const treeStation = this.deedStations.find((s) => s.deed.id === 'good_wishes');
+    if (!treeStation || !chosenWish) return;
+
+    const modal = document.getElementById('wishing-tree-modal');
+    if (modal) modal.classList.add('hidden');
+    this.endBodhiWishQuestView();
+
+    const wishes = window.GAME_DATA.EIGHT_GOOD_WISHES || [];
+    const selectedMap = this.state.wishesSelected || {};
+    const hungWishes = wishes.filter((w) => !!selectedMap[w.id]);
+    const wishIdx = Math.max(0, hungWishes.findIndex((w) => w.id === chosenWish.id));
+    const slots = this._bodhiBranchSlots || [{ angle: 0.32, radius: 2.75, y: 3.7 }];
+    const slot = slots[wishIdx % slots.length];
+
+    const deedPos = treeStation.deed.pos;
+    const terrainY = window.GAME_DATA.getTerrainHeight(deedPos.x, deedPos.z);
+    const treeBase = new THREE.Vector3(deedPos.x, terrainY, deedPos.z);
+
+    // Spawn luminous flying Bodhi Leaf rising from near the Vajrasana Seat to the tree branch!
+    const shortTitle = (this.isZh() ? (chosenWish.zhTitle || chosenWish.title) : chosenWish.title).replace(/^\d+\.\s*/, '');
+    const author = this.state.playerName || this.t('Little Lama', '小沙弥');
+    const leafTex = this.createWishPlaqueTexture(chosenWish.emoji, shortTitle, author);
+    const flyingLeaf = window.TempleModels3D.createBodhiWishLeafMesh(leafTex, 1.15);
+    const startPos = new THREE.Vector3(treeBase.x, treeBase.y + 1.45, treeBase.z + 2.4);
+    const endPos = new THREE.Vector3(
+      treeBase.x + Math.sin(slot.angle) * slot.radius,
+      treeBase.y + slot.y - 0.75,
+      treeBase.z + Math.cos(slot.angle) * slot.radius - 0.35
+    );
+    flyingLeaf.position.copy(startPos);
+    this.publicTempleGroup.add(flyingLeaf);
+    this._flyingWishLeaf = flyingLeaf;
+
+    this._bodhiQuestState = {
+      age: 0,
+      duration: 6.2,
+      flightDur: 3.6,
+      treeCenter: new THREE.Vector3(treeBase.x, treeBase.y + 3.4, treeBase.z - 0.35),
+      startPos,
+      endPos,
+      landed: false
+    };
+
+    const overlay = document.getElementById('bodhi-quest-overlay');
+    const badgeEl = document.getElementById('bodhi-quest-badge');
+    const iconEl = document.getElementById('bodhi-quest-emoji');
+    const titleEl = document.getElementById('bodhi-quest-title');
+    const descEl = document.getElementById('bodhi-quest-desc');
+    const exitBtn = document.getElementById('btn-exit-bodhi-quest');
+
+    if (badgeEl) badgeEl.textContent = this.t('🍃 Vajrasana Bodhi Tree · Leaf Wish Quest', '🍃 金刚座菩提树祈愿 · 愿叶飞升');
+    if (iconEl) iconEl.textContent = chosenWish.emoji || '🍃';
+    if (titleEl) titleEl.textContent = `🍃 ${shortTitle}`;
+    if (descEl) {
+      const detail = this.dField(chosenWish, 'detail', 'zhDetail');
+      descEl.textContent = this.t(
+        `A gentle breeze carries your Bodhi leaf wish up into the serene canopy: "${detail}"`,
+        `微风轻拂金刚座旁的菩提树，金色菩提叶载着善愿飞上树梢：“${detail}”`
+      );
+    }
+    if (exitBtn) exitBtn.textContent = this.t('✨ Return', '✨ 完成返回');
+    if (overlay) overlay.classList.remove('hidden');
+
+    window.templeAudio.playBodhiWishBreezeChime();
+    window.templeAudio.speakText(`${shortTitle}. ${this.dField(chosenWish, 'detail', 'zhDetail')}`, false);
+  }
+
+  endBodhiWishQuestView() {
+    if (this._flyingWishLeaf && this._flyingWishLeaf.parent) {
+      this._flyingWishLeaf.parent.remove(this._flyingWishLeaf);
+    }
+    this._flyingWishLeaf = null;
+    this._bodhiQuestState = null;
+    const overlay = document.getElementById('bodhi-quest-overlay');
+    if (overlay) overlay.classList.add('hidden');
   }
 
   openWishingTreeModal() {
@@ -2087,8 +2762,15 @@ class BuddhistPracticeGame {
     const grid = document.getElementById('wishes-grid-container');
     const previewEl = document.getElementById('selected-wish-preview');
     const confirmBtn = document.getElementById('btn-confirm-hang-wish');
+    const subtitleEl = document.getElementById('wishing-tree-subtitle');
     const wishes = window.GAME_DATA.EIGHT_GOOD_WISHES || [];
 
+    if (subtitleEl) {
+      subtitleEl.textContent = this.t(
+        'Choose a Bodhi Leaf Wish to watch it fly peacefully onto the Vajrasana Bodhi Tree:',
+        '请点击一片菩提叶善愿，进入金刚座菩提树祈愿视角，看它随清风飞上树梢：'
+      );
+    }
     if (!this._selectedWishId) {
       this._selectedWishId = wishes[0] ? wishes[0].id : null;
     }
@@ -2103,19 +2785,16 @@ class BuddhistPracticeGame {
         const shortName = this.isZh()
           ? (w.zhTitle || w.title).replace(/^\d+\.\s*/, '')
           : w.title.replace(/^\d+\.\s*Wishing\s*(for\s*)?/i, '');
-        const detailText = this.dField(w, 'detail', 'zhDetail');
         const card = document.createElement('div');
         card.className = `wish-card ${isSel ? 'selected' : ''} ${alreadyHung ? 'hung-on-tree' : ''}`;
         card.innerHTML = `
           <div class="wish-emoji">${w.emoji}</div>
           <h4>${shortName}</h4>
-          <span class="wish-hung-badge">${alreadyHung ? this.t('✓ Hung', '✓ 已挂树上') : this.t('🎋 Hang', '🎋 挂祈愿牌')}</span>
+          <span class="wish-hung-badge">${alreadyHung ? this.t('🍃 On Tree', '🍃 已飞上树') : this.t('🍃 Fly Wish', '🍃 菩提叶祈愿')}</span>
         `;
         card.addEventListener('click', () => {
           this._selectedWishId = w.id;
-          window.templeAudio.speakText(`${shortName}. ${detailText}`, true);
-          this.hangWishById(w.id, false);
-          renderWishes();
+          this.hangWishById(w.id, true);
         });
         grid.appendChild(card);
       });
@@ -2123,13 +2802,13 @@ class BuddhistPracticeGame {
       if (previewEl) {
         previewEl.textContent =
           hungCount > 0
-            ? this.t(`🌳 ${hungCount} / 8 Wishes Hung on Tree`, `🌳 已在菩提树挂上 ${hungCount} / 8 个善愿`)
-            : this.t(`🎋 Click a plaque to hang it`, `🎋 请点击上方善愿牌挂到菩提树上`);
+            ? this.t(`🍃 ${hungCount} / 8 Bodhi Leaf Wishes swaying on the tree`, `🍃 菩提树上已有 ${hungCount} / 8 片祈愿菩提叶迎风摇曳`)
+            : this.t('🍃 Click any Bodhi leaf above to send your wish flying onto the tree', '🍃 点击上方菩提叶，即可进入祈愿场景放飞善愿');
       }
       if (confirmBtn) {
         confirmBtn.textContent = hungCount > 0
-          ? this.t(`🌳 Done (${hungCount})`, `🌳 完成 (${hungCount})`)
-          : this.t('🎋 Hang Wish (+2 VP)', '🎋 挂祈愿牌 (+2 功德)');
+          ? this.t(`🌳 Close (${hungCount})`, `🌳 关闭 (${hungCount})`)
+          : this.t('🍃 Fly Leaf Wish (+2 VP)', '🍃 放飞菩提叶 (+2 功德)');
       }
     };
 
@@ -2482,7 +3161,13 @@ class BuddhistPracticeGame {
       </div>
       <div style="display:flex; justify-content:center; margin-top:4px;">
         <button class="primary-gold-btn" id="btn-confirm-buddha-ack" style="padding:12px 28px; font-size:16px; width:100%; max-width:440px;">
-          ${alreadyBowed ? this.t('✅ Acknowledge', '✅ 欢喜顶礼') : this.t('✅ Acknowledge & Learn Buddha (+10 VP)', '✅ 至诚顶礼学习佛陀 (+10 功德)')}
+          ${alreadyBowed
+            ? this.t('✅ Acknowledge', '✅ 欢喜顶礼')
+            : threeIdx === 1
+              ? this.t('✅ Acknowledge (+10 VP & Unlock 南无阿弥陀佛)', '✅ 至诚顶礼 (+10 功德并解锁「南无阿弥陀佛」)')
+              : threeIdx === 2
+                ? this.t('✅ Acknowledge (+10 VP & Unlock Om Mani Padme Hum)', '✅ 至诚顶礼 (+10 功德并解锁「六字大明咒」)')
+                : this.t('✅ Acknowledge & Learn Buddha (+10 VP)', '✅ 至诚顶礼学习佛陀 (+10 功德)')}
         </button>
       </div>
     `;
@@ -2496,7 +3181,8 @@ class BuddhistPracticeGame {
       ackBtn.addEventListener('click', () => {
         modal.classList.add('hidden');
         if (!this.state.bowedThreeBuddhas) this.state.bowedThreeBuddhas = {};
-        if (!this.state.bowedThreeBuddhas[threeIdx]) {
+        const firstTimeBow = !this.state.bowedThreeBuddhas[threeIdx];
+        if (firstTimeBow) {
           this.state.bowedThreeBuddhas[threeIdx] = true;
           const labelEl = document.getElementById(`three-buddha-label-${threeIdx}`);
           if (labelEl) {
@@ -2508,6 +3194,27 @@ class BuddhistPracticeGame {
             this.t(`🙏 Bowed to ${cur.shortCnName} +10 VP!`, `🙏 礼敬${cur.shortCnName} +10 功德!`),
             new THREE.Vector3(cur.altarX, 6.0, -32.0)
           );
+        } else {
+          window.templeAudio.playGoodDeedChime();
+          this.showToast(this.t(`🙏 Bowed with gratitude to ${displayName}!`, `🙏 再次至诚顶礼 ${displayName}！`));
+        }
+
+        // Unlock Prayer Skills upon bowing to 阿弥陀佛 (threeIdx 1) & 观音菩萨 (threeIdx 2)
+        if (threeIdx === 1 && !this.state.amitofoUnlocked) {
+          this.state.amitofoUnlocked = true;
+          this.state.activePrayerSkillId = 'amitofo';
+          this.showToast(this.t(
+            '🪷🎉 Bowed to Amitabha Buddha! Prayer Skill "Nanmo Amitofo" (+5 VP) UNLOCKED! Press [L] to chant!',
+            '🪷🎉 至诚顶礼阿弥陀佛圆满！已解锁祈祷技能「南无阿弥陀佛」（按 [L] 念诵，每次 +5 功德）！'
+          ));
+        } else if (threeIdx === 2 && !this.state.omManiUnlocked) {
+          this.state.omManiUnlocked = true;
+          this.state.activePrayerSkillId = 'om_mani';
+          this.showToast(this.t(
+            '🤍🎉 Bowed to Guanyin Bodhisattva! Prayer Skill "Om Mani Padme Hum" (+10 VP) UNLOCKED! Press [L] to chant!',
+            '🤍🎉 至诚顶礼观音菩萨圆满！已解锁祈祷技能「六字大明咒 · Om Mani Padme Hum」（按 [L] 持诵，每次 +10 功德）！'
+          ));
+        } else if (firstTimeBow) {
           const count = this.getBowedThreeBuddhaCount();
           if (count >= 3) {
             this.showToast(this.t(
@@ -2520,9 +3227,6 @@ class BuddhistPracticeGame {
               `🙏 至诚顶礼并认识 ${displayName}！(+10 功德 · ${count}/3 尊)`
             ));
           }
-        } else {
-          window.templeAudio.playGoodDeedChime();
-          this.showToast(this.t(`🙏 Bowed with gratitude to ${displayName}!`, `🙏 再次至诚顶礼 ${displayName}！`));
         }
         this.saveState();
         this.updateHUD();
@@ -2534,8 +3238,8 @@ class BuddhistPracticeGame {
   bowToSpecificBuddhaQuest(buddhaIdx) {
     if (!this.canEnterQifoHall()) {
       this.showToast(this.t(
-        '⛩️ Build the Seven-Buddha Bridge across the North-East River (x=24.8, z=-37) before ascending Seven-Buddha Mountain!',
-        '⛩️ 请先在东北溪岸（x=24.8, z=-37）修建七佛金莲桥，过桥登上七佛山七佛殿！'
+        '🔒 Complete at least 5 Good Deeds (10 VP) along the trail to unlock 七佛殿 on West Seven-Buddha Mountain!',
+        '🔒 请先完成至少 5 项善行（10 功德）开启西山七佛殿大门！'
       ));
       return;
     }
@@ -2557,21 +3261,21 @@ class BuddhistPracticeGame {
       this.standUpFromMat();
     }
 
-    const worldZ = -37.0 + (buddhaIdx - 3) * 3.45;
-    const standPos = new THREE.Vector3(128.0, 16.82, worldZ);
+    const worldZ = 4.0 + (3 - buddhaIdx) * 3.45;
+    const standPos = new THREE.Vector3(-100.0, 16.88, worldZ);
     const dist = Math.hypot(
       this.playerGroup.position.x - standPos.x,
       this.playerGroup.position.z - standPos.z
     );
 
     const performBowAndShowCard = () => {
-      this.playerGroup.position.set(standPos.x, 16.82, standPos.z);
-      this.playerGroup.rotation.y = Math.PI / 2; // Face East (+X) toward the 7 Buddhas in relocated 七佛殿
+      this.playerGroup.position.set(standPos.x, 16.88, standPos.z);
+      this.playerGroup.rotation.y = -Math.PI / 2; // Face West (-X) toward the 7 Buddhas in relocated 七佛殿
       this.bowAnimTimer = 2.2;
       window.templeAudio.playBowingBell();
 
       if (this.buddhaSpotlight) {
-        this.buddhaSpotlight.position.set(6.8, 5.2, (buddhaIdx - 3) * 3.45);
+        this.buddhaSpotlight.position.set(-6.8, 5.2, (3 - buddhaIdx) * 3.45);
         this.buddhaSpotlight.visible = true;
       }
 
@@ -2580,11 +3284,11 @@ class BuddhistPracticeGame {
         emoji: '🙏',
         title: `Bowing to ${displayNumName}`,
         subtitle: `"${this.dField(cur, 'buddhaWish', 'zhBuddhaWish')}"`,
-        targetPos: new THREE.Vector3(131.4, 19.2, worldZ),
+        targetPos: new THREE.Vector3(-103.4, 19.2, worldZ),
         camDistance: 7.4,
         camHeight: 2.6,
-        baseAngle: -Math.PI / 2 + 0.25,
-        orbitSpeed: -0.25,
+        baseAngle: Math.PI / 2 - 0.25,
+        orbitSpeed: 0.25,
         duration: 2.2,
         onComplete: () => {
           this.openBuddhaBowAcknowledgeModal(buddhaIdx);
@@ -2592,10 +3296,10 @@ class BuddhistPracticeGame {
       });
     };
 
-    if (dist > 3.5 && this.playerGroup.position.x > 114.5) {
-      if (this.playerGroup.position.x < 126.8 && Math.abs(this.playerGroup.position.z - (-37.0)) < 4.0) {
-        const sideZ = (this.playerGroup.position.z + standPos.z) >= -74.0 ? -32.2 : -41.8;
-        this.walkToPath([new THREE.Vector3(126.8, 16.82, sideZ), standPos], performBowAndShowCard);
+    if (dist > 3.5 && this.playerGroup.position.x < -86.5) {
+      if (this.playerGroup.position.x > -99.0 && Math.abs(this.playerGroup.position.z - 4.0) < 4.0) {
+        const sideZ = (this.playerGroup.position.z + standPos.z) >= 8.0 ? 8.8 : -0.8;
+        this.walkToPath([new THREE.Vector3(-99.0, 16.88, sideZ), standPos], performBowAndShowCard);
       } else {
         this.walkToAndTrigger(standPos, performBowAndShowCard);
       }
@@ -2675,11 +3379,11 @@ class BuddhistPracticeGame {
             labelEl.innerHTML = `✅ ${displayNumName}`;
           }
           window.templeAudio.playGoodDeedChime();
-          const worldZ = -37.0 + (buddhaIdx - 3) * 3.45;
+          const worldZ = 4.0 + (3 - buddhaIdx) * 3.45;
           this.addVirtuePoints(
             10,
             this.t(`🙏 Bowed to ${displayNumName} +10 VP!`, `🙏 礼拜${displayNumName} +10 功德!`),
-            new THREE.Vector3(131.4, 21.0, worldZ)
+            new THREE.Vector3(-103.4, 21.0, worldZ)
           );
           const count = this.getBowedBuddhaCount();
           this.showToast(
@@ -2863,7 +3567,7 @@ class BuddhistPracticeGame {
 
   getNearestQifoMatPos() {
     const mats = this.qifoSeats || [];
-    let bestMat = new THREE.Vector3(122.2, 16.88, -37.0);
+    let bestMat = new THREE.Vector3(-94.2, 16.88, 4.0);
     let minDist = Infinity;
     for (const mat of mats) {
       const d = Math.hypot(this.playerGroup.position.x - mat.pos.x, this.playerGroup.position.z - mat.pos.z);
@@ -2908,7 +3612,7 @@ class BuddhistPracticeGame {
       return;
     }
 
-    // When inside Relocated 七佛殿 atop Seven-Buddha Mountain (x > 114.6, z in [-51.2, -22.8])
+    // When inside Relocated 七佛殿 atop West Seven-Buddha Mountain (x < -86.6, z in [-11, 19])
     if (this.isInsideQifoHall()) {
       if (actionNum === 1 || actionNum === 2) {
         const mode = actionNum === 2 ? 'bow25' : 'meditate';
@@ -2920,11 +3624,11 @@ class BuddhistPracticeGame {
           this.walkToAndTrigger(targetMat, () => this.sitOnMeditationMat(targetMat, mode, 'qifo'));
         }
       } else if (actionNum === 3) {
-        this.walkToQifoAltarAndOffer('water', -37.0);
+        this.walkToQifoAltarAndOffer('water', 4.0);
       } else if (actionNum === 4) {
-        this.walkToQifoAltarAndOffer('flower', -34.2);
+        this.walkToQifoAltarAndOffer('flower', 1.2);
       } else if (actionNum === 5) {
-        this.walkToQifoAltarAndOffer('scent', -39.8);
+        this.walkToQifoAltarAndOffer('scent', 6.8);
       }
       return;
     }
@@ -3093,17 +3797,17 @@ class BuddhistPracticeGame {
     this.updateHUD();
   }
 
-  walkToQifoAltarAndOffer(type, targetZ = -37.0) {
+  walkToQifoAltarAndOffer(type, targetZ = 4.0) {
     if (this.isSeatedOnMat) this.standUpFromMat();
     this.isBowing25 = false;
     this._offeringActiveUntil = Date.now() + 2200;
-    const dist = Math.hypot(this.playerGroup.position.x - 125.0, this.playerGroup.position.z - targetZ);
+    const dist = Math.hypot(this.playerGroup.position.x - (-96.8), this.playerGroup.position.z - targetZ);
     if (dist < 2.2) {
-      this.playerGroup.rotation.y = Math.PI / 2;
+      this.playerGroup.rotation.y = -Math.PI / 2;
       this.makeOffering(type);
     } else {
-      this.walkToAndTrigger(new THREE.Vector3(125.0, 16.82, targetZ), () => {
-        this.playerGroup.rotation.y = Math.PI / 2;
+      this.walkToAndTrigger(new THREE.Vector3(-96.8, 16.88, targetZ), () => {
+        this.playerGroup.rotation.y = -Math.PI / 2;
         this.makeOffering(type);
       });
     }
@@ -3111,8 +3815,8 @@ class BuddhistPracticeGame {
 
   walkToAltarAndOffer(type, targetX = 0) {
     if (this.isInsideQifoHall()) {
-      const zMap = { water: -37.0, flower: -34.2, scent: -39.8 };
-      this.walkToQifoAltarAndOffer(type, zMap[type] ?? -37.0);
+      const zMap = { water: 4.0, flower: 1.2, scent: 6.8 };
+      this.walkToQifoAltarAndOffer(type, zMap[type] ?? 4.0);
     } else {
       this.walkToDaxiongAltarAndOffer(type, targetX);
     }
@@ -3261,8 +3965,8 @@ class BuddhistPracticeGame {
   makeOffering(type) {
     if (!this.canEnterQifoHall()) {
       this.showToast(this.t(
-        '⛩️ Build the Seven-Buddha Bridge across the North-East River first to reach 七佛殿!',
-        '⛩️ 请先修建东北溪岸的七佛金莲桥，过桥登上七佛殿！'
+        '🔒 Complete at least 5 Good Deeds (10 VP) to enter 七佛殿!',
+        '🔒 请先完成至少 5 项善行（10 功德）开启七佛殿！'
       ));
       return;
     }
@@ -3293,17 +3997,17 @@ class BuddhistPracticeGame {
     const actionLabels = {
       water: {
         title: `💧 ${benefitText}`,
-        pos: new THREE.Vector3(126.8, 19.6, -37.0),
+        pos: new THREE.Vector3(-98.8, 19.6, 4.0),
         toast: `💧 ${this.t('Benefit', '供养利益')}: ${benefitText}`
       },
       flower: {
         title: `🪷 ${benefitText}`,
-        pos: new THREE.Vector3(126.8, 19.6, -34.2),
+        pos: new THREE.Vector3(-98.8, 19.6, 1.2),
         toast: `🪷 ${this.t('Benefit', '供养利益')}: ${benefitText}`
       },
       scent: {
         title: `🪔 ${benefitText}`,
-        pos: new THREE.Vector3(126.8, 19.6, -39.8),
+        pos: new THREE.Vector3(-98.8, 19.6, 6.8),
         toast: `🪔 ${this.t('Benefit', '供养利益')}: ${benefitText}`
       }
     };
@@ -3560,11 +4264,10 @@ class BuddhistPracticeGame {
         modal.classList.add('hidden');
         if (!this.state.bowedManjushri) {
           this.state.bowedManjushri = true;
-          this.state.activePrayerSkillId = 'wenshu';
           this.addVirtuePoints(10, this.t('🦁 Bowed to Manjushri +10 VP!', '🦁 礼敬文殊菩萨 +10 功德!'), new THREE.Vector3(129.4, 20.5, 4.0));
           this.showToast(this.t(
-            '🦁 Unlocked 文殊心咒 (Om A Ra Pa Ca Na Dhih)! Press [L] to chant anytime, or switch prayers in Skills!',
-            '🦁 礼敬文殊菩萨圆满！已解锁「文殊心咒」（嗡阿喇巴札那谛），按快捷键 [L] 即可发声持诵！'
+            '🦁 Bowed to Manjushri Bodhisattva! +10 VP & lit Manjushri in 千佛殿!',
+            '🦁 礼敬文殊菩萨圆满！+10 功德，已点亮千佛殿文殊菩萨圣像！'
           ));
         } else {
           window.templeAudio.playGoodDeedChime();
@@ -3726,14 +4429,21 @@ class BuddhistPracticeGame {
     ));
   }
 
-  // -------------------- WEST FLOWER GARDENS, 3 LOTUS PONDS & 长寿殿 (LONGEVITY HALL) --------------------
+  // -------------------- STOP #1 MAP: FLOWER GARDENS, 4 LOTUS PONDS & 长寿殿 (LONGEVITY HALL) --------------------
   plantFlowerGarden(gardenId) {
+    if (!this.canEnterChangshouMap()) {
+      this.showToast(this.t(
+        '🔒 Unlock Longevity Sanctuary Map (≥ 3 Liberation Points & bow to all 11 Main Map Buddhas/Bodhisattvas) first!',
+        '🔒 请先达成 ≥ 3 解脱功德并礼拜主图全部 11 尊佛菩萨，开启长寿殿新地图！'
+      ));
+      return;
+    }
     const gd = (window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || []).find((g) => g.id === gardenId);
     if (!gd) return;
-    if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
     const st = (this.flowerGardenStations || []).find((s) => s.garden.id === gardenId);
     const dist = Math.hypot(this.playerGroup.position.x - gd.x, this.playerGroup.position.z - gd.z);
-    const gy = window.GAME_DATA.getTerrainHeight(gd.x, gd.z);
+    const gy = window.GAME_DATA.getChangshouMapTerrainHeight(gd.x, gd.z);
 
     const doPlant = () => {
       if (!this.state.plantedFlowerGardens) this.state.plantedFlowerGardens = {};
@@ -3771,12 +4481,19 @@ class BuddhistPracticeGame {
   }
 
   plantLotusPond(pondId) {
+    if (!this.canEnterChangshouMap()) {
+      this.showToast(this.t(
+        '🔒 Unlock Longevity Sanctuary Map (≥ 3 Liberation Points & bow to all 11 Main Map Buddhas/Bodhisattvas) first!',
+        '🔒 请先达成 ≥ 3 解脱功德并礼拜主图全部 11 尊佛菩萨，开启长寿殿新地图！'
+      ));
+      return;
+    }
     const pd = (window.GAME_DATA.CHANGSHOU_LOTUS_PONDS || []).find((p) => p.id === pondId);
     if (!pd) return;
-    if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
     const st = (this.lotusPondStations || []).find((s) => s.pond.id === pondId);
     const dist = Math.hypot(this.playerGroup.position.x - pd.x, this.playerGroup.position.z - pd.z);
-    const py = window.GAME_DATA.getTerrainHeight(pd.x, pd.z);
+    const py = window.GAME_DATA.getChangshouMapTerrainHeight(pd.x, pd.z);
 
     const doPlantLotus = () => {
       if (!this.state.plantedLotusPonds) this.state.plantedLotusPonds = {};
@@ -3815,13 +4532,67 @@ class BuddhistPracticeGame {
     }
   }
 
-  teleportToChangshouHallInterior() {
+  plantQifoLotusPond(pondId) {
+    const pd = (window.GAME_DATA.QIFO_LOTUS_PONDS || []).find((p) => p.id === pondId);
+    if (!pd) return;
     if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    const st = (this.qifoPondStations || []).find((s) => s.pond.id === pondId);
+    const dist = Math.hypot(this.playerGroup.position.x - pd.x, this.playerGroup.position.z - pd.z);
+    const py = window.GAME_DATA.getTerrainHeight(pd.x, 2.8) + 0.04;
+
+    const doPlantQifoLotus = () => {
+      if (!this.state.plantedQifoPonds) this.state.plantedQifoPonds = {};
+      const firstTime = !this.state.plantedQifoPonds[pd.id];
+      this.state.plantedQifoPonds[pd.id] = true;
+      if (st && st.group && st.group.userData) {
+        if (st.group.userData.unplantedGroup) st.group.userData.unplantedGroup.visible = false;
+        if (st.group.userData.plantedGroup) st.group.userData.plantedGroup.visible = true;
+      }
+      const pName = this.dField(pd, 'name', 'zhName');
+      const pBen = this.dField(pd, 'benefit', 'zhBenefit');
+      if (st && st.labelEl) {
+        st.labelEl.innerHTML = `✅ ${pName}`;
+        st.labelEl.classList.add('completed');
+      }
+      window.templeAudio.playOfferingSound();
+      this.bowAnimTimer = 1.2;
+      const plantedCount = Object.keys(this.state.plantedQifoPonds || {}).length;
+      const worldPos = new THREE.Vector3(pd.x, py + 2.6, pd.z);
+      if (firstTime) {
+        this.addVirtuePoints(5, `🪷 ${pName} +5 ${this.t('VP!', '功德!')}`, worldPos);
+      } else {
+        this.spawnFloatingText(`🪷 ${pName}`, worldPos);
+      }
+      this.saveState();
+      this.updateHUD();
+      const totalPonds = (window.GAME_DATA.QIFO_LOTUS_PONDS || []).length || 4;
+      this.showToast(`🪷 (${plantedCount}/${totalPonds}) ${pName}: ${pBen}`);
+      window.templeAudio.speakText(pBen, false);
+    };
+
+    if (dist < 6.8) {
+      doPlantQifoLotus();
+    } else {
+      this.walkToAndTrigger(new THREE.Vector3(pd.x, py, 2.8), doPlantQifoLotus);
+    }
+  }
+
+  teleportToChangshouHallInterior() {
+    if (!this.canEnterChangshouMap()) {
+      const lp = this.state.liberationPoints || 0;
+      const summary = this.getMainMapBowedSummary();
+      this.showToast(this.t(
+        `🔒 Longevity Hall Map unlocks at ≥ 3 Liberation Points (${lp}/3) & bowing to all 11 Main Map Buddhas/Bodhisattvas (${summary.bowedCount}/11)!`,
+        `🔒 长寿殿新地图解锁条件：解脱功德 ≥ 3（当前 ${lp}/3）且礼拜主图全部 11 尊佛菩萨（当前 ${summary.bowedCount}/11）！`
+      ));
+      return;
+    }
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
     if (this.isSeatedOnMat) this.standUpFromMat();
     this.isAutoCirclingStupa = false;
     if (this.state.wearingShoes) {
       this.activeShoeRackKey = 'changshou';
-      this.playerGroup.position.set(-83.5, 16.5, 4.0);
+      this.playerGroup.position.set(-53.5, 16.5, 4.0);
       this.playerGroup.rotation.y = -Math.PI / 2;
       this.showToast(this.t(
         '👟 Please take off your shoes at the rack [⏎ E] before entering Longevity Hall!',
@@ -3829,13 +4600,13 @@ class BuddhistPracticeGame {
       ));
       return;
     }
-    this.playerGroup.position.set(-90.0, 16.92, 4.0);
+    this.playerGroup.position.set(-60.0, 16.92, 4.0);
     this.playerGroup.rotation.y = -Math.PI / 2; // Face West toward 长寿佛
     this.cameraAngle = Math.PI / 2;
     this._wasInChangshouHallCamera = true;
     this.showToast(this.t(
-      '🏺 Welcome to Longevity Hall (长寿殿)! Bow to Amitayus Buddha, plant 4 sacred flower ponds, meditate on 20 mats, or make offerings!',
-      '🏺 欢迎登上西山之巅长寿殿！可礼敬长寿佛（解锁长寿佛心咒）、20座蒲团禅修或水花香供养！'
+      '🏺 Welcome inside Longevity Hall (长寿殿)! Bow to Amitayus Buddha, plant 4 sacred flower ponds, meditate on 20 mats, or make offerings!',
+      '🏺 欢迎来到长寿圣境·长寿殿！可礼敬长寿佛、20座蒲团禅修或水花香供养！'
     ));
   }
 
@@ -3844,7 +4615,7 @@ class BuddhistPracticeGame {
     if (seatIdx !== null && seatIdx !== undefined && seats[seatIdx]) {
       return seats[seatIdx];
     }
-    let best = seats[0] || { idx: 0, x: -94.8, y: 16.92, z: 4.0 };
+    let best = seats[0] || { idx: 0, x: -64.8, y: 16.92, z: 4.0 };
     let minD = Infinity;
     for (const s of seats) {
       const d = Math.hypot(this.playerGroup.position.x - s.x, this.playerGroup.position.z - s.z);
@@ -3857,7 +4628,7 @@ class BuddhistPracticeGame {
   }
 
   sitOnChangshouSeat(seatObj) {
-    if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
     const targetSeat = seatObj || this.getNearestChangshouSeat();
     this.walkTarget = null;
     this.isBowing25 = false;
@@ -3889,7 +4660,7 @@ class BuddhistPracticeGame {
   }
 
   meditateInChangshouHall(seatIdx = null) {
-    if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
     const targetSeat = this.getNearestChangshouSeat(seatIdx);
     const dist = Math.hypot(this.playerGroup.position.x - targetSeat.x, this.playerGroup.position.z - targetSeat.z);
     if ((this.isSeatedOnMat && this.activeChangshouSeatIdx === targetSeat.idx) || dist < 1.4) {
@@ -3902,11 +4673,11 @@ class BuddhistPracticeGame {
   }
 
   walkToChangshouAltarAndOffer(type, zOffset = 0) {
-    if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
     if (this.isSeatedOnMat) this.standUpFromMat();
     this.isBowing25 = false;
     this._offeringActiveUntil = Date.now() + 2200;
-    const altarApproach = new THREE.Vector3(-96.4, 16.92, 4.0 + zOffset);
+    const altarApproach = new THREE.Vector3(-66.4, 16.92, 4.0 + zOffset);
     const dist = Math.hypot(
       this.playerGroup.position.x - altarApproach.x,
       this.playerGroup.position.z - altarApproach.z
@@ -3939,7 +4710,7 @@ class BuddhistPracticeGame {
     const benefitText = offeringData ? this.dField(offeringData, 'benefit', 'zhBenefit') : this.t('Health & longevity peace', '健康长寿清净安乐');
     const offName = offeringData ? this.dField(offeringData, 'name', 'cnName') : type;
     const zPos = type === 'flower' ? 4.0 + 2.95 : (type === 'scent' ? 4.0 - 2.95 : 4.0);
-    const worldPos = new THREE.Vector3(-98.2, 19.3, zPos);
+    const worldPos = new THREE.Vector3(-68.2, 19.3, zPos);
     if (firstTime) {
       this.addVirtuePoints(10, `${offeringData ? offeringData.emoji : '✨'} ${benefitText}`, worldPos);
     } else {
@@ -3968,16 +4739,21 @@ class BuddhistPracticeGame {
   }
 
   bowToChangshouQuest() {
+    if (!this.canEnterChangshouMap()) {
+      this.teleportToChangshouHallInterior();
+      return;
+    }
     const cData = window.GAME_DATA.CHANGSHOU_DATA || {};
     const modal = document.getElementById('buddha-bow-ack-modal');
     const titleEl = document.getElementById('ack-buddha-title');
     const bodyEl = document.getElementById('ack-buddha-body');
     if (!modal || !bodyEl) return;
 
-    if (this.currentScene !== 'public_temple') this.switchScene('public_temple');
+    if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
+    if (this.state.wearingShoes) this.takeOffShoesForHall('changshou');
     if (this.isSeatedOnMat) this.standUpFromMat();
 
-    this.playerGroup.position.set(-96.2, 16.92, 4.0);
+    this.playerGroup.position.set(-66.2, 16.92, 4.0);
     this.playerGroup.rotation.y = -Math.PI / 2; // Face West toward 长寿佛 statue
     this.cameraAngle = Math.PI / 2;
     this.bowAnimTimer = 2.0;
@@ -4023,7 +4799,7 @@ class BuddhistPracticeGame {
       </div>
       <div style="display:flex; justify-content:center; margin-top:4px;">
         <button class="primary-gold-btn" id="btn-confirm-buddha-ack" style="padding:12px 28px; font-size:16px; width:100%; max-width:440px;">
-          ${already ? this.t('✅ Acknowledge', '✅ 欢喜顶礼') : this.t('✅ Acknowledge (+10 VP & Unlock 长寿佛心咒)', '✅ 至诚顶礼 (+10 功德并解锁长寿佛心咒)')}
+          ${already ? this.t('✅ Acknowledge', '✅ 欢喜顶礼') : this.t('✅ Acknowledge (+10 VP)', '✅ 至诚顶礼 (+10 功德)')}
         </button>
       </div>
     `;
@@ -4039,11 +4815,10 @@ class BuddhistPracticeGame {
         modal.classList.add('hidden');
         if (!this.state.bowedChangshou) {
           this.state.bowedChangshou = true;
-          this.state.activePrayerSkillId = 'changshou';
-          this.addVirtuePoints(10, this.t('🏺 Bowed to Amitayus +10 VP!', '🏺 礼敬长寿佛 +10 功德!'), new THREE.Vector3(-101.4, 21.7, 4.0));
+          this.addVirtuePoints(10, this.t('🏺 Bowed to Amitayus +10 VP!', '🏺 礼敬长寿佛 +10 功德!'), new THREE.Vector3(-71.4, 21.7, 4.0));
           this.showToast(this.t(
-            '🏺 Unlocked 长寿佛心咒 (嗡格热阿耶色德吽舍 阿玛ra呢则万德耶索哈)! Press [L] to chant!',
-            '🏺 礼敬长寿佛圆满！已点亮千佛殿「长寿佛」并解锁「长寿佛心咒」（按 [L] 持诵）！'
+            '🏺 Bowed to Amitayus Buddha! +10 VP & lit Longevity Buddha in 千佛殿!',
+            '🏺 礼敬长寿佛圆满！+10 功德，已点亮千佛殿「长寿佛」圣像！'
           ));
         } else {
           window.templeAudio.playGoodDeedChime();
@@ -4057,39 +4832,35 @@ class BuddhistPracticeGame {
 
   isPrayerSkillUnlocked(skillId) {
     if (skillId === 'amitofo') {
-      return !!(this.state.amitofoUnlocked || this.state.virtuePoints >= 100 || (this.state.amitofoCount || 0) > 0);
+      return !!(this.state.amitofoUnlocked || (this.state.bowedThreeBuddhas && this.state.bowedThreeBuddhas[1]) || (this.state.amitofoCount || 0) > 0);
     }
-    if (skillId === 'wenshu') return !!this.state.bowedManjushri;
-    if (skillId === 'changshou') return !!this.state.bowedChangshou;
+    if (skillId === 'om_mani') {
+      return !!(this.state.omManiUnlocked || (this.state.bowedThreeBuddhas && this.state.bowedThreeBuddhas[2]) || (this.state.omManiCount || 0) > 0);
+    }
     return false;
   }
 
   getActivePrayerSkillId() {
     const cur = this.state.activePrayerSkillId || 'amitofo';
     if (this.isPrayerSkillUnlocked(cur)) return cur;
-    for (const id of ['amitofo', 'wenshu', 'changshou']) {
+    for (const id of ['amitofo', 'om_mani']) {
       if (this.isPrayerSkillUnlocked(id)) return id;
     }
     return 'amitofo';
   }
 
   setActivePrayerSkill(skillId) {
-    if (!['amitofo', 'wenshu', 'changshou'].includes(skillId)) return;
+    if (!['amitofo', 'om_mani'].includes(skillId)) return;
     if (!this.isPrayerSkillUnlocked(skillId)) {
       if (skillId === 'amitofo') {
         this.showToast(this.t(
-          '🔒 Reach 100 VP to unlock Nanmo Amitofo skill first!',
-          '🔒 功德满 100 即可解锁第一技能「南无阿弥陀佛」！'
-        ));
-      } else if (skillId === 'wenshu') {
-        this.showToast(this.t(
-          '🔒 Bow to Manjushri Bodhisattva in 文殊殿 to unlock 文殊心咒 first!',
-          '🔒 请先前往文殊殿礼敬文殊菩萨，解锁「文殊心咒」！'
+          '🔒 Bow to Amitabha Buddha (阿弥陀佛) in 大雄宝殿 to unlock Nanmo Amitofo skill first!',
+          '🔒 请先在大雄宝殿礼敬「阿弥陀佛」，即可解锁第一技能「南无阿弥陀佛」！'
         ));
       } else {
         this.showToast(this.t(
-          '🔒 Bow to Longevity Buddha in 长寿殿 to unlock 长寿佛心咒 first!',
-          '🔒 请先前往长寿殿礼敬长寿佛，解锁「长寿佛心咒」！'
+          '🔒 Bow to Guanyin Bodhisattva (观音菩萨) in 大雄宝殿 to unlock Om Mani Padme Hum first!',
+          '🔒 请先在大雄宝殿礼敬「观音菩萨」，即可解锁「六字大明咒 · Om Mani Padme Hum」！'
         ));
       }
       return;
@@ -4120,13 +4891,12 @@ class BuddhistPracticeGame {
     const activeId = this.getActivePrayerSkillId();
     if (!this.isPrayerSkillUnlocked(activeId) && !fromButtonClick) {
       this.showToast(this.t(
-        '🔒 Unlock a Prayer Skill first (100 VP for Nanmo Amitofo, or bow to 文殊菩萨 for 文殊心咒) to use key [L]!',
-        '🔒 请先解锁祈祷技能（满100功德解锁「南无阿弥陀佛」或礼敬文殊菩萨解锁「文殊心咒」），即可按快捷键 [L] 念诵！'
+        '🔒 Bow to Amitabha Buddha (南无阿弥陀佛) or Guanyin Bodhisattva (Om Mani Padme Hum) in 大雄宝殿 to unlock key [L]!',
+        '🔒 请先在大雄宝殿礼敬阿弥陀佛或观音菩萨解锁祈祷技能，即可按快捷键 [L] 念诵！'
       ));
       return false;
     }
-    if (activeId === 'wenshu') return this.castWenshuMantra();
-    if (activeId === 'changshou') return this.castChangshouPrayer();
+    if (activeId === 'om_mani') return this.castOmManiPadmeHum();
     return this.castNanmoAmitofo();
   }
 
@@ -4246,6 +5016,46 @@ class BuddhistPracticeGame {
     return true;
   }
 
+  castOmManiPadmeHum() {
+    if (!this.isPrayerSkillUnlocked('om_mani')) {
+      this.showToast(this.t(
+        '🔒 Bow to Guanyin Bodhisattva (观音菩萨) in 大雄宝殿 first to unlock Om Mani Padme Hum (+10 VP)!',
+        '🔒 请先前往大雄宝殿礼敬「观音菩萨」，即可解锁「六字大明咒 · Om Mani Padme Hum」（每次 +10 功德）！'
+      ));
+      return false;
+    }
+    if (this._isPrayerChanting) {
+      this.showToast(this.t(
+        '⏳ Please wait until the current prayer finishes before praying again!',
+        '⏳ 正在恭敬念诵，请听完本遍祈祷后再继续念诵！'
+      ));
+      return false;
+    }
+    this._startPrayerChantLock('om_mani');
+    this.state.omManiCount = (this.state.omManiCount || 0) + 1;
+    if (this.charParts.meditationRing) {
+      this.charParts.meditationRing.material.opacity = 0.95;
+    }
+    this.bowAnimTimer = 2.4;
+    const cnt = this.state.omManiCount;
+    this.addVirtuePoints(
+      10,
+      this.t(`🤍✨ Om Mani Padme Hum (#${cnt}) +10 VP!`, `🤍✨ 嗡 嘛 呢 呗 美 吽 (${cnt}) +10 功德!`),
+      this.playerGroup.position.clone().add(new THREE.Vector3(0, 3.0, 0))
+    );
+    this.showToast(this.t(
+      `🤍🔊 Om Mani Padme Hum · 嗡 嘛 呢 呗 美 吽 (+10 VP · Chanted: ${cnt})`,
+      `🤍🔊 持诵「六字大明咒」：嗡 嘛 呢 呗 美 吽 (+10 功德 · 第 ${cnt} 遍)`
+    ));
+    this.saveState();
+    this.updateHUD();
+    const capModal = document.getElementById('skills-capability-modal');
+    if (capModal && !capModal.classList.contains('hidden')) {
+      this.openSkillsCapabilityModal(this._activeCapTab || 'all');
+    }
+    return true;
+  }
+
   // -------------------- MEDITATION MAT & 25-BOW SEQUENCE --------------------
   sitOnMeditationMat(matPos = new THREE.Vector3(0, 0.35, -12.6), mode = 'meditate', hallKind = null) {
     const kind = hallKind || (this.isInsideQifoHall() ? 'qifo' : 'daxiong');
@@ -4263,7 +5073,7 @@ class BuddhistPracticeGame {
     this.setPoseMode('sit');
     if (kind === 'qifo') {
       this.playerGroup.position.set(matPos.x, 17.05, matPos.z);
-      this.playerGroup.rotation.y = Math.PI / 2; // Face East (+X) toward 7 Buddhas
+      this.playerGroup.rotation.y = -Math.PI / 2; // Face West (-X) toward 7 Buddhas
     } else {
       this.playerGroup.position.set(matPos.x, 0.61, matPos.z);
       this.playerGroup.rotation.y = Math.PI; // Face North (-Z) toward Three Buddhas
@@ -4373,6 +5183,13 @@ class BuddhistPracticeGame {
 
   // -------------------- SKILL: 'Nanmo Amitofo' (+5 VP per pray · 100x Sky Vision) --------------------
   castNanmoAmitofo() {
+    if (!this.isPrayerSkillUnlocked('amitofo')) {
+      this.showToast(this.t(
+        '🔒 Bow to Amitabha Buddha (阿弥陀佛) in 大雄宝殿 first to unlock Nanmo Amitofo!',
+        '🔒 请先在大雄宝殿礼敬「阿弥陀佛」，即可解锁念佛技能「南无阿弥陀佛」！'
+      ));
+      return false;
+    }
     if (this._isPrayerChanting) {
       this.showToast(this.t(
         '⏳ Please wait until the current prayer finishes before praying again!',
@@ -4403,7 +5220,6 @@ class BuddhistPracticeGame {
         `🪷🔊 南无阿弥陀佛！(已念 ${this.state.amitofoCount} 声 · 再念 ${rem} 声显现百念圣境)`
       ));
     }
-    this.state.amitofoUnlocked = true;
     this.saveState();
     this.updateHUD();
     const capModal = document.getElementById('skills-capability-modal');
@@ -4435,20 +5251,46 @@ class BuddhistPracticeGame {
   }
 
   switchScene(targetScene) {
+    if (targetScene === 'changshou_map' && !this.canEnterChangshouMap()) {
+      const lp = this.state.liberationPoints || 0;
+      const summary = this.getMainMapBowedSummary();
+      this.showToast(this.t(
+        `🔒 Longevity Sanctuary Map unlocks at ≥ 3 Liberation Points (${lp}/3) and bowing to all 11 Main Map Buddhas/Bodhisattvas (${summary.bowedCount}/11)!`,
+        `🔒 「长寿殿」新地图解锁条件：解脱功德 ≥ 3（当前 ${lp}/3）且礼拜主图全部 11 尊佛菩萨（当前 ${summary.bowedCount}/11）！`
+      ));
+      return false;
+    }
     if (this.isSeatedOnMat) this.standUpFromMat();
     this.walkTarget = null;
     this.currentScene = targetScene;
 
+    // When transitioning maps, put shoes back on cleanly
+    if (this.state.wearingShoes === false) {
+      this.state.wearingShoes = true;
+      this.syncShoeVisuals();
+    }
+
+    this.publicTempleGroup.visible = targetScene === 'public_temple';
+    if (this.changshouMapGroup) this.changshouMapGroup.visible = targetScene === 'changshou_map';
+    this.personalSpaceGroup.visible = targetScene === 'personal_space';
+
     if (targetScene === 'public_temple') {
-      this.publicTempleGroup.visible = true;
-      this.personalSpaceGroup.visible = false;
       this.applySkyTheme();
       const startY = window.GAME_DATA.getTerrainHeight(0, 105);
       this.playerGroup.position.set(0, startY, 105);
       this.playerGroup.rotation.y = Math.PI;
+      this.cameraAngle = 0;
+    } else if (targetScene === 'changshou_map') {
+      this.applySkyTheme();
+      const spawnY = window.GAME_DATA.getChangshouMapTerrainHeight(22, 4);
+      this.playerGroup.position.set(22, spawnY, 4.0);
+      this.playerGroup.rotation.y = -Math.PI / 2; // Face West up the emerald avenue toward 长寿殿
+      this.cameraAngle = Math.PI / 2;
+      this.showToast(this.t(
+        '🏺✨ Welcome to Stop #1: Longevity Sanctuary Map (长寿殿)! Cross the lotus stream, plant sacred ponds & bow to Amitayus Buddha!',
+        '🏺✨ 欢迎来到第 1 站新地图「长寿殿圣境」！过莲桥、植花池，登临长寿殿礼敬无量寿智如来！'
+      ));
     } else if (targetScene === 'personal_space') {
-      this.publicTempleGroup.visible = false;
-      this.personalSpaceGroup.visible = true;
       this.scene.background.setHex(0xd8f3dc);
       this.playerGroup.position.set(0, 0, 6);
       this.showToast(this.t(
@@ -4457,7 +5299,10 @@ class BuddhistPracticeGame {
       ));
     }
 
+    this.syncShoeVisuals();
+    this.saveState();
     this.updateHUD();
+    return true;
   }
 
   teleportToStartingPoint() {
@@ -4488,6 +5333,7 @@ class BuddhistPracticeGame {
       this.activeShoeRackKey = 'daxiong';
       this.playerGroup.position.set(0, 0.1, 4.2);
       this.playerGroup.rotation.y = Math.PI;
+      this.cameraAngle = 0;
       this.showToast(this.t(
         '👟 Please take off your shoes at the Shoe Rack [⏎ E] before entering 大雄宝殿!',
         '👟 请先在大雄宝殿门口鞋架处【脱鞋】[⏎ E]，净足入殿礼敬西方三圣！'
@@ -4506,8 +5352,8 @@ class BuddhistPracticeGame {
   teleportToQifoHallInterior() {
     if (!this.canEnterQifoHall()) {
       this.showToast(this.t(
-        '⛩️ Build the Seven-Buddha Bridge across the North-East River (x=24.8, z=-37) before ascending Seven-Buddha Mountain!',
-        '⛩️ 请先在东北溪岸（x=24.8, z=-37）修建七佛金莲桥，过桥登上七佛山顶七佛殿！'
+        '🔒 Complete at least 5 Good Deeds (10 VP) along the trail to enter 七佛殿 on West Seven-Buddha Mountain!',
+        '🔒 请先完成至少 5 项善行（10 功德），即可步入西山七佛殿礼拜七佛！'
       ));
       return;
     }
@@ -4518,21 +5364,22 @@ class BuddhistPracticeGame {
     this.isAutoCirclingStupa = false;
     if (this.state.wearingShoes) {
       this.activeShoeRackKey = 'qifo';
-      this.playerGroup.position.set(111.5, 16.5, -37.0);
-      this.playerGroup.rotation.y = Math.PI / 2;
+      this.playerGroup.position.set(-83.5, 16.5, 4.0);
+      this.playerGroup.rotation.y = -Math.PI / 2;
+      this.cameraAngle = Math.PI / 2;
       this.showToast(this.t(
         '👟 Please take off your shoes at the Seven-Buddha Hall rack [⏎ E] before stepping inside!',
         '👟 请先在七佛殿门口鞋架处【脱鞋】[⏎ E]，净足入殿礼拜七佛！'
       ));
       return;
     }
-    this.playerGroup.position.set(118.0, 16.82, -37.0);
-    this.playerGroup.rotation.y = Math.PI / 2;
-    this.cameraAngle = -Math.PI / 2;
+    this.playerGroup.position.set(-90.0, 16.88, 4.0);
+    this.playerGroup.rotation.y = -Math.PI / 2;
+    this.cameraAngle = Math.PI / 2;
     this._wasInQifoHallCamera = true;
     this.showToast(this.t(
-      '⛩️ Inside Seven-Buddha Hall (七佛殿) atop Seven-Buddha Mountain beside 文殊殿!',
-      '⛩️ 已步入毗邻文殊殿的七佛山巅·七佛殿！可礼拜过去七佛、禅坐与供养！'
+      '⛩️ Inside Seven-Buddha Hall (七佛殿) atop West Seven-Buddha Mountain!',
+      '⛩️ 已步入西山之巅·七佛殿！可礼拜过去七佛、禅坐与供养！'
     ));
   }
 
@@ -4713,6 +5560,8 @@ class BuddhistPracticeGame {
           this.bowToManjushriQuest();
         } else if (this._nearChangshou) {
           this.bowToChangshouQuest();
+        } else if (this._nearChangshouReturnPortal) {
+          this.switchScene('public_temple');
         } else if (this._nearHallTeleportStart) {
           this.teleportToStartingPoint();
         } else if (this._nearbyWenshuSeatIdx !== null && this._nearbyWenshuSeatIdx !== undefined) {
@@ -4723,6 +5572,8 @@ class BuddhistPracticeGame {
           this.plantFlowerGarden(this._nearbyFlowerGardenId);
         } else if (this._nearbyLotusPondId) {
           this.plantLotusPond(this._nearbyLotusPondId);
+        } else if (this._nearbyQifoPondId) {
+          this.plantQifoLotusPond(this._nearbyQifoPondId);
         } else if (this._nearbySutraId) {
           this.visitAndReadSutra(this._nearbySutraId);
         } else if (this._nearBell) {
@@ -4801,6 +5652,10 @@ class BuddhistPracticeGame {
         this.prevMouseY = e.clientY;
         this.cameraAngle -= dx * 0.0068;
         this.cameraPitch = Math.max(0.16, Math.min(1.15, this.cameraPitch + dy * 0.0052));
+        if (Math.abs(dx) > 0.5) {
+          this._camManualCooldown = 1.8;
+          this._camFollowAlignTimer = 0;
+        }
       }
     });
 
@@ -5059,7 +5914,11 @@ class BuddhistPracticeGame {
     if (tabChangshou) {
       tabChangshou.addEventListener('click', () => {
         this.maybePromptHuixiangThen(() => {
-          this.teleportToChangshouHallInterior();
+          if (this.currentScene === 'changshou_map') {
+            this.teleportToChangshouHallInterior();
+          } else {
+            this.switchScene('changshou_map');
+          }
         });
       });
     }
@@ -5081,7 +5940,73 @@ class BuddhistPracticeGame {
     muteBtn.addEventListener('click', () => {
       const muted = window.templeAudio.toggleMute();
       muteBtn.textContent = muted ? this.t('🔇 Muted', '🔇 静音') : this.t('🔊 Sound', '🔊 音效');
+      this.syncBgmButtonUI();
     });
+
+    this._bgmUserDisabled = false;
+    const toggleMantraBgm = () => {
+      this._bgmUserDisabled = false;
+      const playing = window.templeAudio.toggleMantraMusic();
+      if (!playing) this._bgmUserDisabled = true;
+      this.syncBgmButtonUI();
+      this.showToast(playing
+        ? this.t('🎵 Sacred background music ON', '🎵 梵音背景音乐已开启')
+        : this.t('🎵 Sacred background music OFF', '🎵 梵音背景音乐已关闭'));
+    };
+    const bgmBtn = document.getElementById('btn-bgm-toggle');
+    if (bgmBtn) bgmBtn.addEventListener('click', toggleMantraBgm);
+    const topBgmBtn = document.getElementById('btn-top-bgm');
+    if (topBgmBtn) topBgmBtn.addEventListener('click', toggleMantraBgm);
+
+    const bindBgmVolumeSlider = (sliderEl) => {
+      if (!sliderEl) return;
+      const applyVal = () => {
+        const pct = Math.max(0, Math.min(100, parseInt(sliderEl.value, 10) || 0));
+        const vol = pct / 100;
+        this.state.bgmVolume = vol;
+        if (window.templeAudio && typeof window.templeAudio.setBgmVolume === 'function') {
+          window.templeAudio.setBgmVolume(vol);
+        }
+        this.syncBgmButtonUI();
+        this.saveState();
+      };
+      ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((ev) => {
+        sliderEl.addEventListener(ev, (e) => e.stopPropagation());
+      });
+      sliderEl.addEventListener('input', applyVal);
+      sliderEl.addEventListener('change', applyVal);
+    };
+    bindBgmVolumeSlider(document.getElementById('bgm-volume-slider'));
+    bindBgmVolumeSlider(document.getElementById('top-bgm-volume-slider'));
+    this.syncBgmButtonUI();
+
+    const topSkyBtn = document.getElementById('btn-top-sky-theme');
+    if (topSkyBtn) {
+      ['pointerdown', 'mousedown', 'touchstart'].forEach((ev) => {
+        topSkyBtn.addEventListener(ev, (e) => e.stopPropagation());
+      });
+      topSkyBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.cycleSkyTheme();
+      });
+    }
+
+    // Start gentle 梵音 background music softly on the player's first interaction
+    const startGentleBgmOnFirstGesture = () => {
+      if (this._mantraAutoStarted || this._bgmUserDisabled) return;
+      this._mantraAutoStarted = true;
+      if (window.templeAudio && !window.templeAudio.muted && !window.templeAudio.isMantraMusicPlaying()) {
+        window.templeAudio.toggleMantraMusic(true);
+        this.syncBgmButtonUI();
+      }
+    };
+    window.addEventListener('pointerdown', startGentleBgmOnFirstGesture, { once: true });
+    window.addEventListener('keydown', startGentleBgmOnFirstGesture, { once: true });
+
+    const exitBodhiQuestBtn = document.getElementById('btn-exit-bodhi-quest');
+    if (exitBodhiQuestBtn) {
+      exitBodhiQuestBtn.addEventListener('click', () => this.endBodhiWishQuestView());
+    }
 
     const skipCutsceneBtn = document.getElementById('btn-skip-cutscene');
     if (skipCutsceneBtn) {
@@ -6104,13 +7029,11 @@ class BuddhistPracticeGame {
       if (k === 'qianfodian') b.textContent = this.t('🏮 千佛殿 (35 · 8)', '🏮 千佛殿 (35佛 · 8菩萨)');
     });
 
-    const isAmitofoUnlocked = !!(
-      this.state.amitofoUnlocked ||
-      this.state.virtuePoints >= 100 ||
-      (this.state.amitofoCount || 0) > 0
-    );
+    const isAmitofoUnlocked = this.isPrayerSkillUnlocked('amitofo');
     const count = this.state.amitofoCount || 0;
     const cycleCount = count > 0 && count % 100 === 0 ? 100 : count % 100;
+    const isOmManiUnlocked = this.isPrayerSkillUnlocked('om_mani');
+    const omManiCount = this.state.omManiCount || 0;
 
     const thirtyFive = window.GAME_DATA.THIRTY_FIVE_BUDDHAS || [];
     const eightBodhisattvas = window.GAME_DATA.EIGHT_BODHISATTVAS || [];
@@ -6137,11 +7060,7 @@ class BuddhistPracticeGame {
     let html = '';
 
     if (showSkills) {
-      const isWenshuUnlocked = !!this.state.bowedManjushri;
-      const wenshuCount = this.state.wenshuMantraCount || 0;
-      const isChangshouUnlocked = !!this.state.bowedChangshou;
-      const changshouCount = this.state.changshouPrayerCount || 0;
-      const unlockedSkillsTotal = (isAmitofoUnlocked ? 1 : 0) + (isWenshuUnlocked ? 1 : 0) + (isChangshouUnlocked ? 1 : 0);
+      const unlockedSkillsTotal = (isAmitofoUnlocked ? 1 : 0) + (isOmManiUnlocked ? 1 : 0);
       const activePrayerId = this.getActivePrayerSkillId();
       const chantingNow = !!this._isPrayerChanting;
       const chantingId = this._activeChantingSkillId;
@@ -6160,7 +7079,7 @@ class BuddhistPracticeGame {
         <div class="cap-section-card">
           <div class="cap-section-head">
             <h3>🙏 ${this.t('Prayer Skill Window', '念佛修行技能栏')}</h3>
-            <span class="cap-count-badge">${this.t(`Unlocked: ${unlockedSkillsTotal} / 3 · Active: [L]`, `已解锁：${unlockedSkillsTotal} / 3 · 快捷键：[L]`)}</span>
+            <span class="cap-count-badge">${this.t(`Unlocked: ${unlockedSkillsTotal} / 2 · Active: [L]`, `已解锁：${unlockedSkillsTotal} / 2 · 快捷键：[L]`)}</span>
           </div>
           <div style="background:#fffbeb; border:1.5px solid #f59e0b; border-radius:10px; padding:8px 12px; margin-bottom:10px; font-size:12px; font-weight:800; color:#78350f; line-height:1.45;">
             ${this.t(
@@ -6172,82 +7091,50 @@ class BuddhistPracticeGame {
             <div style="flex:1; min-width:220px;">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span style="font-size:15px; font-weight:900; color:#7a1c1c;">
-                  🪷 ${this.t('Skill 1: 南无阿弥陀佛 · Nanmo Amitofo', '第一技能：南无阿弥陀佛（念佛法门）')}
+                  🪷 ${this.t('Skill 1: 南无阿弥陀佛 · Nanmo Amitofo', '第一技能：南无阿弥陀佛（礼敬阿弥陀佛解锁）')}
                 </span>
                 ${makeSwitchBtn('amitofo', isAmitofoUnlocked)}
               </div>
               <div style="font-size:12.5px; font-weight:700; color:#5b3416; margin-top:4px; line-height:1.45;">
                 ${this.t(
-                  `Pronunciation: 南无阿弥陀佛 (Nan mo Ah mee to fo). +5 VP each · 100 prayers summon golden Sky Vision! (Progress: ${cycleCount}/100 · Total: ${count})`,
-                  `发声念诵：南 无 阿 弥 陀 佛（nā mó ā mí tuó fó）。每次功德 +5；满 100 声显现虚空圣境！（进度：${cycleCount}/100 · 总计：${count} 声）`
+                  `Unlocked by bowing to Amitabha Buddha in 大雄宝殿! Pronunciation: 南无阿弥陀佛. +5 VP each · 100 prayers summon golden Sky Vision! (${cycleCount}/100 · Total: ${count})`,
+                  `于大雄宝殿礼敬「阿弥陀佛」即可解锁！每次念诵功德 +5；满 100 声显现虚空圣境！（进度：${cycleCount}/100 · 总计：${count} 声）`
                 )}
               </div>
             </div>
-            <button class="primary-gold-btn" id="cap-btn-cast-amitofo" ${chantingNow ? 'disabled' : ''} style="padding:10px 18px; font-size:13.5px; white-space:nowrap;">
-              ${chantingNow && chantingId === 'amitofo'
-                ? this.t('🔊 Pronouncing...', '🔊 正在念诵…')
-                : `🪷 ${this.t(`Pray [L] (${cycleCount}/100)`, `🔊 念诵 (${cycleCount}/100)`)}`}
+            <button class="primary-gold-btn" id="cap-btn-cast-amitofo" ${chantingNow && isAmitofoUnlocked ? 'disabled' : ''} style="padding:10px 18px; font-size:13.5px; white-space:nowrap; ${isAmitofoUnlocked ? '' : 'opacity:0.86;'}">
+              ${isAmitofoUnlocked
+                ? (chantingNow && chantingId === 'amitofo'
+                  ? this.t('🔊 Pronouncing...', '🔊 正在念诵…')
+                  : `🪷 ${this.t(`Pray [L] (${cycleCount}/100)`, `🔊 念诵 (${cycleCount}/100)`)}`)
+                : `🔒 ${this.t('Bow to 阿弥陀佛', '礼敬阿弥陀佛解锁')}`}
             </button>
           </div>
 
-          <div class="skill-hero-card ${isWenshuUnlocked ? 'unlocked-glow' : ''}" style="margin-top:10px;">
-            <img src="${wenshuRefSrc}" alt="文殊菩萨" style="width:48px; height:48px; object-fit:cover; border-radius:10px; border:1.5px solid #d4941c; flex-shrink:0;" />
+          <div class="skill-hero-card ${isOmManiUnlocked ? 'unlocked-glow' : ''}" style="margin-top:10px;">
             <div style="flex:1; min-width:220px;">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span style="font-size:15px; font-weight:900; color:#7a1c1c;">
-                  🦁 ${this.t('Skill 2: 文殊心咒 · Manjushri Mantra', '第二技能：文殊心咒（大智文殊菩萨）')}
+                  🤍 ${this.t('Skill 2: Om Mani Padme Hum · 六字大明咒 (+10 VP)', '第二技能：六字大明咒 · Om Mani Padme Hum (+10 功德)')}
                 </span>
-                ${makeSwitchBtn('wenshu', isWenshuUnlocked)}
+                ${makeSwitchBtn('om_mani', isOmManiUnlocked)}
               </div>
-              <div style="font-size:12.5px; font-weight:700; color:#5b3416; margin-top:5px; line-height:1.5;">
-                <div>• ${this.t('Sanskrit Romanization: Om A Ra Pa Ca Na Dhih', '梵文罗马拼音：Om A Ra Pa Ca Na Dhih')}</div>
-                <div>• ${this.t('Chinese Phonetics: 嗡 阿 喇 巴 札 那 谛（ōng ā rā bā zhá nà dì）', '汉字谐音读法：嗡 阿 喇 巴 札 那 谛（ōng ā rā bā zhá nà dì）')}</div>
+              <div style="font-size:12.5px; font-weight:700; color:#5b3416; margin-top:4px; line-height:1.45;">
+                <div>• ${this.t('Mantra: Om Mani Padme Hum · 嗡 嘛 呢 呗 美 吽（ōng mā ní bēi měi hōng）', '六字大明咒：Om Mani Padme Hum · 嗡 嘛 呢 呗 美 吽')}</div>
                 <div style="margin-top:2px; opacity:0.9;">
                   ${this.t(
-                    `Unlocked once you bow to 文殊菩萨! Grants +5 VP & wisdom light (Chanted: ${wenshuCount}).`,
-                    `于山顶文殊殿礼敬文殊菩萨即可解锁！每次发声持诵功德 +5（已持诵：${wenshuCount} 遍）。`
+                    `Unlocked by bowing to Guanyin Bodhisattva (观音菩萨) in 大雄宝殿! Each prayer grants +10 Virtue Points! (Chanted: ${omManiCount})`,
+                    `于大雄宝殿礼敬「观音菩萨」即可解锁！每次念诵得 +10 功德，增长大慈大悲！(已念诵：${omManiCount} 遍)`
                   )}
                 </div>
               </div>
             </div>
-            <button class="primary-gold-btn" id="cap-btn-cast-wenshu" ${chantingNow && isWenshuUnlocked ? 'disabled' : ''} style="padding:10px 18px; font-size:13.5px; white-space:nowrap; ${isWenshuUnlocked ? '' : 'opacity:0.86;'}">
-              ${isWenshuUnlocked
-                ? (chantingNow && chantingId === 'wenshu'
-                  ? this.t('🔊 Pronouncing...', '🔊 正在持诵…')
-                  : `🦁 ${this.t(`Chant Mantra (${wenshuCount})`, `🔊 念诵心咒 (${wenshuCount})`)}`)
-                : `🔒 ${this.t('Bow to 文殊菩萨', '礼敬文殊菩萨解锁')}`}
-            </button>
-          </div>
-
-          <div class="skill-hero-card ${isChangshouUnlocked ? 'unlocked-glow' : ''}" style="margin-top:10px;">
-            <img src="${changshouRefSrc}" alt="长寿佛" style="width:48px; height:48px; object-fit:cover; border-radius:10px; border:1.5px solid #d4941c; flex-shrink:0;" />
-            <div style="flex:1; min-width:220px;">
-              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="font-size:15px; font-weight:900; color:#7a1c1c;">
-                  🏺 ${this.t('Skill 3: 长寿佛心咒 · Longevity Buddha Mantra', '第三技能：长寿佛心咒（无量寿佛加持）')}
-                </span>
-                ${makeSwitchBtn('changshou', isChangshouUnlocked)}
-              </div>
-              <div style="font-size:12.5px; font-weight:700; color:#5b3416; margin-top:5px; line-height:1.5;">
-                <div>• ${this.t('Mantra: 嗡格热阿耶色德吽舍 阿玛ra呢则万德耶索哈', '心咒：嗡格热阿耶色德吽舍 阿玛ra呢则万德耶索哈')}</div>
-                <div>• ${this.t(
-                  'Benefit: 善知识长久住世，家人身体健康，世界和平，福慧增上，息除恶疾，病灾，不受传染病侵害，避免意外身亡。',
-                  '长寿佛心咒利益：善知识长久住世，家人身体健康，世界和平，福慧增上，息除恶疾，病灾，不受传染病侵害，避免意外身亡。'
-                )}</div>
-                <div style="margin-top:2px; opacity:0.9;">
-                  ${this.t(
-                    `Unlocked by bowing to 长寿佛! +5 VP each (Chanted: ${changshouCount}).`,
-                    `于西苑长寿殿礼敬长寿佛即可解锁！每次祈愿功德 +5（已持诵：${changshouCount} 遍）。`
-                  )}
-                </div>
-              </div>
-            </div>
-            <button class="primary-gold-btn" id="cap-btn-cast-changshou" ${chantingNow && isChangshouUnlocked ? 'disabled' : ''} style="padding:10px 18px; font-size:13.5px; white-space:nowrap; ${isChangshouUnlocked ? '' : 'opacity:0.86;'}">
-              ${isChangshouUnlocked
-                ? (chantingNow && chantingId === 'changshou'
-                  ? this.t('🔊 Pronouncing...', '🔊 正在祈愿…')
-                  : `🏺 ${this.t(`Chant Mantra (${changshouCount})`, `🔊 念诵心咒 (${changshouCount})`)}`)
-                : `🔒 ${this.t('Bow to 长寿佛', '礼敬长寿佛解锁')}`}
+            <button class="primary-gold-btn" id="cap-btn-cast-om-mani" ${chantingNow && isOmManiUnlocked ? 'disabled' : ''} style="padding:10px 18px; font-size:13.5px; white-space:nowrap; ${isOmManiUnlocked ? '' : 'opacity:0.86;'}">
+              ${isOmManiUnlocked
+                ? (chantingNow && chantingId === 'om_mani'
+                  ? this.t('🔊 Pronouncing...', '🔊 正在念诵…')
+                  : `🤍 ${this.t(`Pray +10 VP (${omManiCount})`, `🔊 念诵 +10 功德 (${omManiCount})`)}`)
+                : `🔒 ${this.t('Bow to 观音菩萨', '礼敬观音菩萨解锁')}`}
             </button>
           </div>
 
@@ -6363,31 +7250,24 @@ class BuddhistPracticeGame {
     const castBtn = document.getElementById('cap-btn-cast-amitofo');
     if (castBtn) {
       castBtn.addEventListener('click', () => {
-        this.castNanmoAmitofo();
-        this.openSkillsCapabilityModal(this._activeCapTab || 'all');
-      });
-    }
-    const castWenshuBtn = document.getElementById('cap-btn-cast-wenshu');
-    if (castWenshuBtn) {
-      castWenshuBtn.addEventListener('click', () => {
-        if (this.state.bowedManjushri) {
-          this.castWenshuMantra();
+        if (this.isPrayerSkillUnlocked('amitofo')) {
+          this.castNanmoAmitofo();
           this.openSkillsCapabilityModal(this._activeCapTab || 'all');
         } else {
           modal.classList.add('hidden');
-          this.teleportToWenshuHallInterior();
+          this.bowToThreeBuddhaQuest(1);
         }
       });
     }
-    const castChangshouBtn = document.getElementById('cap-btn-cast-changshou');
-    if (castChangshouBtn) {
-      castChangshouBtn.addEventListener('click', () => {
-        if (this.state.bowedChangshou) {
-          this.castChangshouPrayer();
+    const castOmManiBtn = document.getElementById('cap-btn-cast-om-mani');
+    if (castOmManiBtn) {
+      castOmManiBtn.addEventListener('click', () => {
+        if (this.isPrayerSkillUnlocked('om_mani')) {
+          this.castOmManiPadmeHum();
           this.openSkillsCapabilityModal(this._activeCapTab || 'all');
         } else {
           modal.classList.add('hidden');
-          this.teleportToChangshouHallInterior();
+          this.bowToThreeBuddhaQuest(2);
         }
       });
     }
@@ -6561,6 +7441,8 @@ class BuddhistPracticeGame {
 
     const vp = this.state.virtuePoints || 0;
     const lp = this.state.liberationPoints || 0;
+    const bowedSummary = this.getMainMapBowedSummary();
+    const changshouUnlocked = this.canEnterChangshouMap();
     const stops = window.GAME_DATA.TASK_MAP_STOPS || [];
     const firstRow = stops.slice(0, 5);
     const secondRow = stops.slice(5, 10);
@@ -6568,11 +7450,17 @@ class BuddhistPracticeGame {
     bodyEl.innerHTML = `
       <div class="task-map-summary">
         <span style="font-weight:900; color:#7a1c1c; font-size:13.5px;">
-          ${this.t('🚩 Gather VP & LP along 10 sacred stops (Coming Soon)', '🚩 攒够功德与解脱点 · 逐站拜访新佛陀（即将开放）')}
+          ${changshouUnlocked
+            ? this.t('🚩 Stop #1「长寿殿」Map UNLOCKED! Click Stop #1 to travel there!', '🚩 第 1 站「长寿殿」圣境新地图已开启！点击下方第 1 站即可前往！')
+            : this.t(
+              `🚩 Stop #1「长寿殿」unlocks at ≥ 3 Liberation Points & bowing to all 11 Main Map Buddhas/Bodhisattvas`,
+              `🚩 第 1 站「长寿殿」解锁条件：解脱功德 ≥ 3（当前 ${lp}/3）且礼拜主图全部 11 尊佛菩萨（当前 ${bowedSummary.bowedCount}/11）`
+            )}
         </span>
         <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:12.5px; font-weight:900;">
           <span style="background:#fff; border:1.5px solid #d97706; border-radius:999px; padding:3px 10px; color:#8b1e1e;">🪷 ${this.t(`VP: ${vp}`, `功德 ${vp}`)}</span>
-          <span style="background:#ecfdf5; border:1.5px solid #16a34a; border-radius:999px; padding:3px 10px; color:#14532d;">✨ ${this.t(`LP: ${lp}`, `解脱 ${lp}`)}</span>
+          <span style="background:#ecfdf5; border:1.5px solid #16a34a; border-radius:999px; padding:3px 10px; color:#14532d;">✨ ${this.t(`LP: ${lp}/3`, `解脱 ${lp}/3`)}</span>
+          <span style="background:#fff7ed; border:1.5px solid #ea580c; border-radius:999px; padding:3px 10px; color:#9a3412;">🙏 ${this.t(`Main Map: ${bowedSummary.bowedCount}/11`, `主图礼佛 ${bowedSummary.bowedCount}/11`)}</span>
         </div>
       </div>
       <div class="task-map-board">
@@ -6589,19 +7477,37 @@ class BuddhistPracticeGame {
       const shortLabel = (stop.shortName || stop.zhShortName)
         ? this.dField(stop, 'shortName', 'zhShortName')
         : this.dField(stop, 'buddhaName', 'zhBuddhaName');
+      const isStopUnlocked = stop.id === 'changshou_map' ? changshouUnlocked : false;
       const node = document.createElement('button');
       node.type = 'button';
-      node.className = 'task-map-node';
+      node.className = `task-map-node ${isStopUnlocked ? 'unlocked' : ''}`;
+      const reqText = stop.id === 'changshou_map'
+        ? this.t(`✨${lp}/3 · 🙏${bowedSummary.bowedCount}/11`, `✨${lp}/3 · 🙏${bowedSummary.bowedCount}/11`)
+        : `🪷${stop.reqVP || 0} · ✨${stop.reqLP || 0}`;
       node.innerHTML = `
         <div class="task-map-node-top">
           <span>#${stopNum}</span>
-          <span>🔒</span>
+          <span>${isStopUnlocked ? (this.currentScene === 'changshou_map' ? '📍' : '🚀') : '🔒'}</span>
         </div>
         <div class="task-map-node-icon">${stop.emoji || '🪷'}</div>
         <div class="task-map-node-name">${shortLabel}</div>
-        <div class="task-map-node-req">🪷${stop.reqVP || 0} · ✨${stop.reqLP || 0}</div>
+        <div class="task-map-node-req">${reqText}</div>
       `;
       node.addEventListener('click', () => {
+        if (stop.id === 'changshou_map') {
+          if (isStopUnlocked) {
+            modal.classList.add('hidden');
+            this.maybePromptHuixiangThen(() => {
+              this.switchScene('changshou_map');
+            });
+          } else {
+            this.showToast(this.t(
+              `🔒 Reach ≥ 3 Liberation Points (${lp}/3) & bow to all 11 Buddhas/Bodhisattvas in Main Map (${bowedSummary.bowedCount}/11) to unlock Stop #1「长寿殿」!`,
+              `🔒 需解脱功德 ≥ 3（当前 ${lp}/3）且礼拜主图全部 11 尊佛菩萨（西方三圣3+七佛7+文殊1，当前 ${bowedSummary.bowedCount}/11）方能进入第 1 站「长寿殿」！`
+            ));
+          }
+          return;
+        }
         this.showToast(this.t(
           `🔒 Stop #${stopNum} (${shortLabel}) unlocks in a future update!`,
           `🔒 第 ${stopNum} 站「${shortLabel}」暂未解锁，敬请期待！`
@@ -6681,6 +7587,34 @@ class BuddhistPracticeGame {
     this.setLanguage(this.isZh() ? 'en' : 'zh');
   }
 
+  syncBgmButtonUI() {
+    const playing = !!(window.templeAudio && window.templeAudio.isMantraMusicPlaying());
+    const bgmBtn = document.getElementById('btn-bgm-toggle');
+    if (bgmBtn) {
+      bgmBtn.textContent = playing
+        ? this.t('🎵 Sanctuary Music: ON', '🎵 梵音背景音: 开')
+        : this.t('🎵 Sanctuary Music: OFF', '🎵 梵音背景音: 关');
+    }
+    const topBgmBtn = document.getElementById('btn-top-bgm');
+    if (topBgmBtn) {
+      topBgmBtn.textContent = playing
+        ? this.t('🎵 Music: ON', '🎵 梵音: 开')
+        : this.t('🎵 Music: OFF', '🎵 梵音: 关');
+      topBgmBtn.classList.toggle('primary-red', playing);
+    }
+    const volLbl = document.getElementById('bgm-volume-label');
+    if (volLbl) volLbl.textContent = this.t('🎵 BGM Vol', '🎵 梵音音量');
+    const pct = Math.round((typeof this.state.bgmVolume === 'number' ? this.state.bgmVolume : 0.20) * 100);
+    const volSlider = document.getElementById('bgm-volume-slider');
+    if (volSlider) volSlider.value = String(pct);
+    const volVal = document.getElementById('bgm-volume-value');
+    if (volVal) volVal.textContent = `${pct}%`;
+    const topVolSlider = document.getElementById('top-bgm-volume-slider');
+    if (topVolSlider) topVolSlider.value = String(pct);
+    const topVolVal = document.getElementById('top-bgm-volume-value');
+    if (topVolVal) topVolVal.textContent = `${pct}%`;
+  }
+
   applyLanguageToDOM() {
     const zh = this.isZh();
     document.documentElement.lang = zh ? 'zh-CN' : 'en';
@@ -6702,8 +7636,7 @@ class BuddhistPracticeGame {
     }
     setText('#label-virtue-point', 'Virtue Point', '功德值 VP');
     setText('#label-liberation-point', 'Liberation Point', '解脱功德');
-    setText('#tab-courtyard', '⛰️ Start', '⛰️ 起点');
-    setText('#tab-changshou-hall', '🏺 Longevity', '🏺 长寿殿');
+    setText('#tab-courtyard', this.currentScene === 'changshou_map' ? '⛰️ Main Map' : '⛰️ Start', this.currentScene === 'changshou_map' ? '⛰️ 主地图' : '⛰️ 起点');
     setText('#hud-btn-qianfodian', '🏮 Skills', '🏮 技能·千佛');
     setTitle('#hud-btn-qianfodian', 'Skills & Thousand-Buddha Hall (35 Buddhas · 8 Bodhisattvas)', '打开修行技能与千佛殿（35佛 · 8菩萨）');
     setText('#btn-top-store', '🏪 Store', '🏪 商城');
@@ -6749,6 +7682,13 @@ class BuddhistPracticeGame {
       setText('#btn-voice-toggle', window.templeAudio.voiceEnabled ? '🗣️ Voice: ON' : '🗣️ Voice: OFF', window.templeAudio.voiceEnabled ? '🗣️ 语音: 开' : '🗣️ 语音: 关');
       setText('#btn-audio-toggle', window.templeAudio.muted ? '🔇 Muted' : '🔊 Sound', window.templeAudio.muted ? '🔇 静音' : '🔊 音效');
     }
+    this.syncBgmButtonUI();
+    this.applySkyTheme();
+    setText('#minimap-dir-n', 'N', '北');
+    setText('#minimap-dir-s', 'S', '南');
+    setText('#minimap-dir-w', 'W', '西');
+    setText('#minimap-dir-e', 'E', '东');
+    this.updateMinimap(true);
     const shareLink = document.querySelector('#right-panel a[download]');
     if (shareLink) shareLink.textContent = zh ? '📥 分享版' : '📥 Share';
     setText('#top-reset-btn', '🔄 Reset Progress', '🔄 重置进度');
@@ -6792,8 +7732,8 @@ class BuddhistPracticeGame {
     const controlsHint = document.querySelector('.controls-hint');
     if (controlsHint) {
       controlsHint.innerHTML = zh
-        ? '🎮 WASD / 方向键：移动 &nbsp;·&nbsp; 🦘 空格：跳跃 &nbsp;·&nbsp; ⏎ E：互动 &nbsp;·&nbsp; 🙏 L：念佛 &nbsp;·&nbsp; 🖱️ 拖动：视角'
-        : '🎮 WASD / Arrows: Move &nbsp;·&nbsp; 🦘 Space: Jump &nbsp;·&nbsp; ⏎ E: Interact &nbsp;·&nbsp; 🙏 L: Pray &nbsp;·&nbsp; 🖱️ Drag: Orbit';
+        ? '🎮 WASD / 方向键：转向移动（视角自动跟随前方） &nbsp;·&nbsp; 🦘 空格：跳跃 &nbsp;·&nbsp; ⏎ E：互动 &nbsp;·&nbsp; 🙏 L：念佛 &nbsp;·&nbsp; 🖱️ 拖动：自由观景'
+        : '🎮 WASD / Arrows: Steer & Move (Auto-Follow View) &nbsp;·&nbsp; 🦘 Space: Jump &nbsp;·&nbsp; ⏎ E: Interact &nbsp;·&nbsp; 🙏 L: Pray &nbsp;·&nbsp; 🖱️ Drag: Free Look';
     }
 
     // Modal Headers & Static Text
@@ -6805,8 +7745,8 @@ class BuddhistPracticeGame {
     setText('#personal-modal .modal-header h2', '🏪 Personal Space Store (2 VP Each)', '🏪 个人道场商城（每件物品仅需 2 功德）');
     setText('#task-map-modal-title', '🗺️ 10-Stop Map', '🗺️ 十站寻佛地图');
     setText('#sticker-modal .modal-header h2', '🎖️ My Virtue & 7-Buddha Sticker Book', '🎖️ 我的善行与七佛功德徽章册');
-    setText('#wishing-tree-modal .modal-header h2', '🎋 Bodhi Wishing Tree', '🎋 菩提祈愿树');
-    setText('#btn-confirm-hang-wish', '🌳 Done', '🌳 完成挂牌');
+    setText('#wishing-tree-modal .modal-header h2', '🍃 Bodhi Wishing Tree · 菩提树叶祈愿', '🍃 菩提树叶祈愿树');
+    setText('#btn-confirm-hang-wish', '🌳 Close', '🌳 关闭');
     setText('#buddha-quiz-modal .modal-header h2', '🧠 7-Buddha Wisdom Master Quiz (+30 VP & Golden Crown!)', '🧠 七佛智慧问答挑战 (+30 功德与金冠!)');
     setText('#huixiang-modal .modal-header h2', '🪷 Merit Dedication — 「Hui Xiang」', '🪷 功德圆满 · 礼佛「回向」');
 
@@ -6927,11 +7867,22 @@ class BuddhistPracticeGame {
         : this.t(`🔒 Manjushri (${circledCount}/7)`, `🔒 文殊殿 (${circledCount}/7)`);
       tabWenshuEl.classList.toggle('locked', !canWenshu);
     }
+    const tabStartEl = document.getElementById('tab-courtyard');
+    if (tabStartEl) {
+      tabStartEl.textContent = this.currentScene === 'changshou_map'
+        ? this.t('⛰️ Main Map', '⛰️ 主地图')
+        : this.t('⛰️ Start', '⛰️ 起点');
+    }
+
+    const canChangshouMap = this.canEnterChangshouMap();
+    const lpNow = this.state.liberationPoints || 0;
+    const bowedSum = this.getMainMapBowedSummary();
     const tabChangshouEl = document.getElementById('tab-changshou-hall');
     if (tabChangshouEl) {
-      tabChangshouEl.textContent = this.state.bowedChangshou
-        ? this.t('✅ Longevity Hall', '✅ 长寿殿')
-        : this.t('🏺 Longevity Hall', '🏺 长寿殿');
+      tabChangshouEl.textContent = canChangshouMap
+        ? (this.state.bowedChangshou ? this.t('✅ Longevity Map', '✅ 长寿殿') : this.t('🏺 Longevity Map', '🏺 长寿殿'))
+        : this.t(`🔒 Longevity (${lpNow}/3·${bowedSum.bowedCount}/11)`, `🔒 长寿殿 (${lpNow}/3·${bowedSum.bowedCount}/11)`);
+      tabChangshouEl.classList.toggle('locked', !canChangshouMap);
     }
 
     const doneCount = this.getCompletedDeedCount();
@@ -7044,7 +7995,7 @@ class BuddhistPracticeGame {
     });
     deedsListEl.appendChild(manjushriItem);
 
-    // West Longevity Corridor & 长寿殿 Quests
+    // Stop #1 长寿殿 Map Quests (3 Flower Gardens, 4 Lotus Ponds, Bow to Amitayus)
     const gardensTotal = (window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || []).length || 3;
     const plantedGardenCount = Object.values(this.state.plantedFlowerGardens || {}).filter(Boolean).length;
     const gardenItem = document.createElement('div');
@@ -7052,19 +8003,24 @@ class BuddhistPracticeGame {
     gardenItem.innerHTML = `
       <div class="deed-info">
         <div class="deed-emoji">🌸</div>
-        <div class="deed-text"><h4>${this.t(`Plant West Flower Gardens (${plantedGardenCount}/${gardensTotal})`, `西苑百花园植花 (${plantedGardenCount}/${gardensTotal})`)}</h4></div>
+        <div class="deed-text"><h4>${this.t(`Longevity Map Gardens (${plantedGardenCount}/${gardensTotal})`, `长寿殿地图·百花园 (${plantedGardenCount}/${gardensTotal})`)}</h4></div>
       </div>
-      <button class="deed-action-btn">${plantedGardenCount >= gardensTotal ? '✓' : this.t('Go', '前往')}</button>
+      <button class="deed-action-btn">${plantedGardenCount >= gardensTotal ? '✓' : (canChangshouMap ? this.t('Go', '前往') : '🔒')}</button>
     `;
     gardenItem.addEventListener('click', () => {
       const sp = document.getElementById('side-panel');
       if (sp) sp.classList.add('collapsed');
+      if (!this.canEnterChangshouMap()) {
+        this.switchScene('changshou_map');
+        return;
+      }
+      if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
       const nextGarden = (window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || []).find(
         (g) => !(this.state.plantedFlowerGardens && this.state.plantedFlowerGardens[g.id])
       ) || (window.GAME_DATA.CHANGSHOU_FLOWER_GARDENS || [])[0];
       if (nextGarden) {
-        const gy = window.GAME_DATA.getTerrainHeight(nextGarden.x, 2.8);
-        this.walkToAndTrigger(new THREE.Vector3(nextGarden.x, gy, 2.8), () => {
+        const gy = window.GAME_DATA.getChangshouMapTerrainHeight(nextGarden.x, 4.0);
+        this.walkToAndTrigger(new THREE.Vector3(nextGarden.x, gy, 4.0), () => {
           this.plantFlowerGarden(nextGarden.id);
         });
       }
@@ -7078,19 +8034,24 @@ class BuddhistPracticeGame {
     pondItem.innerHTML = `
       <div class="deed-info">
         <div class="deed-emoji">🪷</div>
-        <div class="deed-text"><h4>${this.t(`Plant 4 Sacred Flower Ponds (${plantedPondCount}/${pondsTotal})`, `四座圣花池植花 (${plantedPondCount}/${pondsTotal})`)}</h4></div>
+        <div class="deed-text"><h4>${this.t(`Longevity Map Lotus Ponds (${plantedPondCount}/${pondsTotal})`, `长寿殿地图·四圣花池 (${plantedPondCount}/${pondsTotal})`)}</h4></div>
       </div>
-      <button class="deed-action-btn">${plantedPondCount >= pondsTotal ? '✓' : this.t('Go', '前往')}</button>
+      <button class="deed-action-btn">${plantedPondCount >= pondsTotal ? '✓' : (canChangshouMap ? this.t('Go', '前往') : '🔒')}</button>
     `;
     pondItem.addEventListener('click', () => {
       const sp = document.getElementById('side-panel');
       if (sp) sp.classList.add('collapsed');
+      if (!this.canEnterChangshouMap()) {
+        this.switchScene('changshou_map');
+        return;
+      }
+      if (this.currentScene !== 'changshou_map') this.switchScene('changshou_map');
       const nextPond = (window.GAME_DATA.CHANGSHOU_LOTUS_PONDS || []).find(
         (p) => !(this.state.plantedLotusPonds && this.state.plantedLotusPonds[p.id])
       ) || (window.GAME_DATA.CHANGSHOU_LOTUS_PONDS || [])[0];
       if (nextPond) {
-        const py = window.GAME_DATA.getTerrainHeight(nextPond.x, 2.8);
-        this.walkToAndTrigger(new THREE.Vector3(nextPond.x, py, 2.8), () => {
+        const py = window.GAME_DATA.getChangshouMapTerrainHeight(nextPond.x, 4.0);
+        this.walkToAndTrigger(new THREE.Vector3(nextPond.x, py, 4.0), () => {
           this.plantLotusPond(nextPond.id);
         });
       }
@@ -7102,9 +8063,9 @@ class BuddhistPracticeGame {
     changshouItem.innerHTML = `
       <div class="deed-info">
         <div class="deed-emoji">🏺</div>
-        <div class="deed-text"><h4>${this.t('Bow to Amitayus (长寿殿)', '礼敬长寿佛（西苑长寿殿）')}</h4></div>
+        <div class="deed-text"><h4>${this.t('Bow to Amitayus (Stop #1 Map)', '礼敬长寿佛（第1站·长寿殿地图）')}</h4></div>
       </div>
-      <button class="deed-action-btn">${this.state.bowedChangshou ? '✓' : this.t('+10 VP', '+10 功德')}</button>
+      <button class="deed-action-btn">${this.state.bowedChangshou ? '✓' : (canChangshouMap ? this.t('+10 VP', '+10 功德') : '🔒')}</button>
     `;
     changshouItem.addEventListener('click', () => {
       this.bowToChangshouQuest();
@@ -7146,7 +8107,7 @@ class BuddhistPracticeGame {
         ? (activePrayerId === 'amitofo'
           ? this.t('🌟 Active [Key L]', '🌟 当前快捷键 [L]')
           : this.t('🌟 Unlocked · Skill 1', '🌟 已解锁 · 第一技能'))
-        : this.t('🔒 100 VP Unlock', '🔒 100功德解锁');
+        : this.t('🔒 Bow 阿弥陀佛', '🔒 礼敬阿弥陀佛解锁');
     }
     if (skillBtn) {
       skillBtn.disabled = chantingNow;
@@ -7154,21 +8115,17 @@ class BuddhistPracticeGame {
         ? this.t('🔊 Pronouncing...', '🔊 正在念诵…')
         : isAmitofoUnlocked
           ? this.t(`🪷 Nanmo Amitofo (${cycleCount}/100)`, `🪷 南无阿弥陀佛 (${cycleCount}/100)`)
-          : this.t(`🙏 Pray Nanmo Amitofo (${cycleCount}/100)`, `🙏 念诵南无阿弥陀佛 (${cycleCount}/100)`);
+          : this.t(`🙏 Bow 阿弥陀佛 to Unlock`, `🙏 礼敬阿弥陀佛解锁`);
     }
     if (matSkillBtn) {
       matSkillBtn.disabled = chantingNow;
       const isPhoneView = window.innerWidth <= 768;
       if (chantingNow) {
         matSkillBtn.textContent = this.t('🔊Chanting', '🔊念诵中');
-      } else if (activePrayerId === 'wenshu') {
+      } else if (activePrayerId === 'om_mani') {
         matSkillBtn.textContent = isPhoneView
-          ? this.t('🦁Mantra', '🦁文殊咒')
-          : this.t(`🦁 Mantra [L] (${this.state.wenshuMantraCount || 0})`, `🦁 文殊心咒 [L] (${this.state.wenshuMantraCount || 0})`);
-      } else if (activePrayerId === 'changshou') {
-        matSkillBtn.textContent = isPhoneView
-          ? this.t('🏺Pray', '🏺长寿咒')
-          : this.t(`🏺 Longv [L] (${this.state.changshouPrayerCount || 0})`, `🏺 长寿咒 [L] (${this.state.changshouPrayerCount || 0})`);
+          ? this.t('🤍OmMani', '🤍大明咒')
+          : this.t(`🤍 Om Mani [L] (${this.state.omManiCount || 0})`, `🤍 六字大明咒 [L] (${this.state.omManiCount || 0})`);
       } else {
         matSkillBtn.textContent = isPhoneView
           ? this.t('📿Pray', '📿念佛')
@@ -7182,25 +8139,22 @@ class BuddhistPracticeGame {
           `⌨️ 设为当前技能后按 [L] 发声念诵（总计: ${count} 声）`
         )
         : this.t(
-          `✨ Reach 100 VP to unlock [L] (Total: ${count})`,
-          `✨ 满100功德解锁 [L] 快捷键 (总计: ${count} 声)`
+          `✨ Bow to Amitabha Buddha in 大雄宝殿 to unlock [L]`,
+          `✨ 礼敬大雄宝殿阿弥陀佛即可解锁 [L] 快捷键`
         );
     }
     if (dockAmitofoBtn) {
       const iconSpan = dockAmitofoBtn.querySelector('span');
       const labelEl = dockAmitofoBtn.querySelector('small');
       if (iconSpan) {
-        iconSpan.textContent = activePrayerId === 'wenshu' ? '🦁' : activePrayerId === 'changshou' ? '🏺' : '🪷';
+        iconSpan.textContent = activePrayerId === 'om_mani' ? '🤍' : '🪷';
       }
       if (labelEl) {
         if (chantingNow) {
           labelEl.innerHTML = `${this.t('Chanting…', '念诵中…')}<span id="dock-amitofo-count" style="display:none;">${cycleCount}</span>`;
-        } else if (activePrayerId === 'wenshu') {
-          const wC = this.state.wenshuMantraCount || 0;
-          labelEl.innerHTML = `${this.t('Mantra[L]', '文殊[L]')} <span id="dock-amitofo-count">${wC}</span>`;
-        } else if (activePrayerId === 'changshou') {
-          const cC = this.state.changshouPrayerCount || 0;
-          labelEl.innerHTML = `${this.t('Longv[L]', '长寿[L]')} <span id="dock-amitofo-count">${cC}</span>`;
+        } else if (activePrayerId === 'om_mani') {
+          const oC = this.state.omManiCount || 0;
+          labelEl.innerHTML = `${this.t('OmMani[L]', '大明咒[L]')} <span id="dock-amitofo-count">${oC}</span>`;
         } else {
           labelEl.innerHTML = `${this.t('Pray[L]', '念佛[L]')} <span id="dock-amitofo-count">${cycleCount}</span>/100`;
         }
@@ -7209,74 +8163,45 @@ class BuddhistPracticeGame {
       dockAmitofoCount.textContent = String(cycleCount);
     }
 
-    // Extra Prayer Skills (#2 文殊心咒, #3 长寿祈愿咒) inside Right Sanctuary Drawer + Quick [L] Switch
+    // Extra Prayer Skill (#2 Om Mani Padme Hum) inside Right Sanctuary Drawer + Quick [L] Switch
     const extraSkillsEl = document.getElementById('right-extra-skills-container');
     if (extraSkillsEl) {
-      const wUnlocked = !!this.state.bowedManjushri;
-      const wCnt = this.state.wenshuMantraCount || 0;
-      const cUnlocked = !!this.state.bowedChangshou;
-      const cCnt = this.state.changshouPrayerCount || 0;
+      const oUnlocked = this.isPrayerSkillUnlocked('om_mani');
+      const oCnt = this.state.omManiCount || 0;
       extraSkillsEl.innerHTML = `
         ${isAmitofoUnlocked && activePrayerId !== 'amitofo' ? `
           <button type="button" id="btn-equip-amitofo" class="hud-btn" style="width:100%; justify-content:center; font-size:11px; padding:4px 8px;">
             🔄 ${this.t('Switch [L] to Nanmo Amitofo', '切换快捷键 [L] 为「南无阿弥陀佛」')}
           </button>
         ` : ''}
-        <div class="skill-status-box ${wUnlocked ? 'unlocked' : ''}" style="padding:8px;">
+        <div class="skill-status-box ${oUnlocked ? 'unlocked' : ''}" style="padding:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
-            <span style="font-size:12px; font-weight:900; color:#7a1c1c;">🦁 ${this.t('2. 文殊心咒', '2. 文殊心咒')}</span>
-            <span class="skill-badge">${wUnlocked ? (activePrayerId === 'wenshu' ? this.t('🌟 Key [L]', '🌟 当前 [L]') : this.t('🌟 Unlocked', '🌟 已解锁')) : this.t('🔒 Bow Manjushri', '🔒 礼敬文殊解锁')}</span>
+            <span style="font-size:12px; font-weight:900; color:#7a1c1c;">🤍 ${this.t('2. Om Mani Padme Hum (+10 VP)', '2. 六字大明咒 (+10 功德)')}</span>
+            <span class="skill-badge">${oUnlocked ? (activePrayerId === 'om_mani' ? this.t('🌟 Key [L]', '🌟 当前 [L]') : this.t('🌟 Unlocked', '🌟 已解锁')) : this.t('🔒 Bow Guanyin', '🔒 礼敬观音解锁')}</span>
           </div>
           <div style="font-size:10.5px; color:#5b3416; line-height:1.35; margin-bottom:5px;">
-            Om A Ra Pa Ca Na Dhih<br>嗡 阿 喇 巴 札 那 谛（ōng ā rā bā zhá nà dì）
+            Om Mani Padme Hum · 嗡 嘛 呢 呗 美 吽
           </div>
           <div style="display:flex; gap:5px;">
-            <button type="button" id="btn-skill-wenshu" class="secondary-btn" ${chantingNow && wUnlocked ? 'disabled' : ''} style="flex:1; font-size:11.5px; padding:6px 6px;">
-              ${wUnlocked
-                ? (chantingNow && chantingId === 'wenshu' ? this.t('🔊 Pronouncing...', '🔊 正在持诵…') : this.t(`🔊 Chant (${wCnt})`, `🔊 持诵 (${wCnt})`))
-                : this.t('🔒 Go to 文殊殿', '🔒 前往文殊殿')}
+            <button type="button" id="btn-skill-om-mani" class="secondary-btn" ${chantingNow && oUnlocked ? 'disabled' : ''} style="flex:1; font-size:11.5px; padding:6px 6px;">
+              ${oUnlocked
+                ? (chantingNow && chantingId === 'om_mani' ? this.t('🔊 Pronouncing...', '🔊 正在念诵…') : this.t(`🔊 Pray +10 VP (${oCnt})`, `🔊 念诵 +10 (${oCnt})`))
+                : this.t('🔒 Bow 观音菩萨', '🔒 前往大雄宝殿礼观音')}
             </button>
-            ${wUnlocked && activePrayerId !== 'wenshu' ? `<button type="button" id="btn-equip-wenshu" class="hud-btn" style="font-size:11px; padding:5px 7px;">[L]</button>` : ''}
-          </div>
-        </div>
-        <div class="skill-status-box ${cUnlocked ? 'unlocked' : ''}" style="padding:8px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
-            <span style="font-size:12px; font-weight:900; color:#7a1c1c;">🏺 ${this.t('3. 长寿佛心咒', '3. 长寿佛心咒')}</span>
-            <span class="skill-badge">${cUnlocked ? (activePrayerId === 'changshou' ? this.t('🌟 Key [L]', '🌟 当前 [L]') : this.t('🌟 Unlocked', '🌟 已解锁')) : this.t('🔒 Bow 长寿佛', '🔒 礼敬长寿佛解锁')}</span>
-          </div>
-          <div style="font-size:10.5px; color:#5b3416; line-height:1.35; margin-bottom:5px;">
-            嗡格热阿耶色德吽舍 阿玛ra呢则万德耶索哈<br>
-            ${this.t('Benefit: 善知识长久住世，家人身体健康，世界和平，福慧增上，息除恶疾，病灾，不受传染病侵害，避免意外身亡。', '利益：善知识长久住世，家人身体健康，世界和平，福慧增上，息除恶疾，病灾，不受传染病侵害，避免意外身亡。')}
-          </div>
-          <div style="display:flex; gap:5px;">
-            <button type="button" id="btn-skill-changshou" class="secondary-btn" ${chantingNow && cUnlocked ? 'disabled' : ''} style="flex:1; font-size:11.5px; padding:6px 6px;">
-              ${cUnlocked
-                ? (chantingNow && chantingId === 'changshou' ? this.t('🔊 Pronouncing...', '🔊 正在祈愿…') : this.t(`🔊 Chant (${cCnt})`, `🔊 持诵 (${cCnt})`))
-                : this.t('🔒 Go to 长寿殿', '🔒 前往长寿殿')}
-            </button>
-            ${cUnlocked && activePrayerId !== 'changshou' ? `<button type="button" id="btn-equip-changshou" class="hud-btn" style="font-size:11px; padding:5px 7px;">[L]</button>` : ''}
+            ${oUnlocked && activePrayerId !== 'om_mani' ? `<button type="button" id="btn-equip-om-mani" class="hud-btn" style="font-size:11px; padding:5px 7px;">[L]</button>` : ''}
           </div>
         </div>
       `;
       const eqA = document.getElementById('btn-equip-amitofo');
       if (eqA) eqA.addEventListener('click', () => this.setActivePrayerSkill('amitofo'));
-      const eqW = document.getElementById('btn-equip-wenshu');
-      if (eqW) eqW.addEventListener('click', () => this.setActivePrayerSkill('wenshu'));
-      const eqC = document.getElementById('btn-equip-changshou');
-      if (eqC) eqC.addEventListener('click', () => this.setActivePrayerSkill('changshou'));
+      const eqO = document.getElementById('btn-equip-om-mani');
+      if (eqO) eqO.addEventListener('click', () => this.setActivePrayerSkill('om_mani'));
 
-      const btnW = document.getElementById('btn-skill-wenshu');
-      if (btnW) {
-        btnW.addEventListener('click', () => {
-          if (this.state.bowedManjushri) this.castWenshuMantra();
-          else this.teleportToWenshuHallInterior();
-        });
-      }
-      const btnC = document.getElementById('btn-skill-changshou');
-      if (btnC) {
-        btnC.addEventListener('click', () => {
-          if (this.state.bowedChangshou) this.castChangshouPrayer();
-          else this.teleportToChangshouHallInterior();
+      const btnO = document.getElementById('btn-skill-om-mani');
+      if (btnO) {
+        btnO.addEventListener('click', () => {
+          if (oUnlocked) this.castOmManiPadmeHum();
+          else this.bowToThreeBuddhaQuest(2);
         });
       }
     }
@@ -7384,6 +8309,8 @@ class BuddhistPracticeGame {
     }
     this.updateWorldLabels();
     this.checkProximityPrompt();
+    this.updateGroundInteractionHalo(elapsed);
+    this.updateMinimap(false);
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -7462,7 +8389,7 @@ class BuddhistPracticeGame {
 
               if (curBuddha) {
                 if (this.buddhaSpotlight) {
-                  this.buddhaSpotlight.position.set(6.8, 5.2, (bIdx - 3) * 3.45);
+                  this.buddhaSpotlight.position.set(-6.8, 5.2, (3 - bIdx) * 3.45);
                   this.buddhaSpotlight.visible = true;
                 }
                 const blessingBanner = document.getElementById('bow-blessing-banner');
@@ -7592,6 +8519,10 @@ class BuddhistPracticeGame {
       }
     } else if (moveX !== 0 || moveZ !== 0) {
       this._walkingDeedTargetId = null;
+      const rawSig = `${Math.round(moveX * 10)}_${Math.round(moveZ * 10)}`;
+      const isPureForward = Math.abs(moveX) < 0.01 && moveZ < 0;
+      const isPureBackward = Math.abs(moveX) < 0.01 && moveZ > 0;
+
       const len = Math.hypot(moveX, moveZ);
       moveX /= len;
       moveZ /= len;
@@ -7607,16 +8538,48 @@ class BuddhistPracticeGame {
           this._daxiongMoveAzimuthLock = null;
         }
       }
-      const activeAzimuth = this._daxiongMoveAzimuthLock != null ? this._daxiongMoveAzimuthLock : this.cameraAngle;
+
+      // Lock input reference azimuth while holding a turn/strafe key combo so turning right
+      // walks straight East while the follow camera smoothly aligns behind the player!
+      if (rawSig !== this._lastMoveInputSig && Math.abs(moveX) > 0.01) {
+        this._camManualCooldown = 0;
+      }
+      if (isPureForward || this.isDraggingCam || this._lastMoveInputSig !== rawSig || this._moveInputAzimuth == null) {
+        this._moveInputAzimuth = this.cameraAngle;
+      }
+      this._lastMoveInputSig = rawSig;
+
+      const activeAzimuth = this._daxiongMoveAzimuthLock != null ? this._daxiongMoveAzimuthLock : this._moveInputAzimuth;
       const sin = Math.sin(activeAzimuth);
       const cos = Math.cos(activeAzimuth);
       const worldDX = moveX * cos + moveZ * sin;
       const worldDZ = -moveX * sin + moveZ * cos;
 
+      const beforeX = this.playerGroup.position.x;
+      const beforeZ = this.playerGroup.position.z;
       this.tryMovePlayer(worldDX * speed * dt, worldDZ * speed * dt);
+      const movedDist = Math.hypot(this.playerGroup.position.x - beforeX, this.playerGroup.position.z - beforeZ);
+      if (movedDist > 0.001) {
+        if (isPureBackward) {
+          this._backwardHoldTimer += dt;
+          if (this._backwardHoldTimer > 0.75) {
+            this._allow180CamFlip = true;
+            this._camFollowAlignTimer = Math.max(this._camFollowAlignTimer, 0.35);
+          } else {
+            this._camFollowAlignTimer = 0;
+          }
+        } else {
+          this._backwardHoldTimer = 0;
+          this._allow180CamFlip = false;
+          this._camFollowAlignTimer = 1.15;
+        }
+      }
       isMoving = true;
     } else if (this.walkTarget) {
       this._daxiongMoveAzimuthLock = null;
+      this._lastMoveInputSig = '';
+      this._moveInputAzimuth = null;
+      this._backwardHoldTimer = 0;
       const diff = new THREE.Vector3().subVectors(this.walkTarget, this.playerGroup.position);
       diff.y = 0;
       const dist = diff.length();
@@ -7633,7 +8596,13 @@ class BuddhistPracticeGame {
         }
       } else {
         diff.normalize();
+        const beforeX = this.playerGroup.position.x;
+        const beforeZ = this.playerGroup.position.z;
         this.tryMovePlayer(diff.x * speed * dt, diff.z * speed * dt);
+        if (Math.hypot(this.playerGroup.position.x - beforeX, this.playerGroup.position.z - beforeZ) > 0.001) {
+          this._allow180CamFlip = true;
+          this._camFollowAlignTimer = 1.15;
+        }
         isMoving = true;
       }
     }
@@ -7644,7 +8613,9 @@ class BuddhistPracticeGame {
     const groundY =
       this.currentScene === 'public_temple'
         ? window.GAME_DATA.getSurfaceHeightAt(px, pz)
-        : 0;
+        : this.currentScene === 'changshou_map'
+          ? window.GAME_DATA.getChangshouMapSurfaceHeightAt(px, pz)
+          : 0;
 
     if (this.isInsideAnyPrayerHall() && this.playerVelY > 0) {
       this.playerVelY = 0;
@@ -7665,6 +8636,9 @@ class BuddhistPracticeGame {
 
     if (moveX === 0 && moveZ === 0) {
       this._daxiongMoveAzimuthLock = null;
+      this._lastMoveInputSig = '';
+      this._moveInputAzimuth = null;
+      this._backwardHoldTimer = 0;
     }
     this._lastIsMoving = !!isMoving;
 
@@ -7921,10 +8895,9 @@ class BuddhistPracticeGame {
         this.lastStupaAngle = null;
       }
 
-      // 1B. EAST RIVER CROSSING GATES: WISDOM BRIDGE (z ~ 4) & SEVEN-BUDDHA BRIDGE (z ~ -37)
+      // 1B. EAST RIVER CROSSING GATE: WISDOM BRIDGE (z ~ 4)
       if (nextX > 26.4 && nextX < 33.8) {
         const onWisdomSpan = Math.abs(nextZ - 4.0) <= 2.8;
-        const onQifoSpan = Math.abs(nextZ - (-37.0)) <= 2.8;
         if (onWisdomSpan || Math.abs(prevZ - 4.0) < 2.75) {
           if (!this.canCrossEastRiver()) {
             nextX = prevX >= 33.8 ? 33.8 : 26.4;
@@ -7942,25 +8915,7 @@ class BuddhistPracticeGame {
           } else if (!onWisdomSpan) {
             nextX = prevX <= 26.4 ? 26.4 : (prevX >= 33.8 ? 33.8 : prevX);
           }
-        } else if (onQifoSpan || Math.abs(prevZ - (-37.0)) < 2.75) {
-          if (!this.canCrossSevenBuddhaBridge()) {
-            nextX = prevX >= 33.8 ? 33.8 : 26.4;
-            this.walkTarget = null;
-            const now = performance.now();
-            if (now - (this._qbridgeWarnTime || 0) > 2000) {
-              this._qbridgeWarnTime = now;
-              this.showToast(this.t(
-                '⛩️ Build the Seven-Buddha Bridge nearby (x=24.8, z=-37) before ascending Seven-Buddha Mountain!',
-                '⛩️ 请先在渡口（x=24.8, z=-37）修建七佛金莲桥，再过桥登上七佛山！'
-              ));
-            }
-          } else if (Math.abs(prevZ - (-37.0)) < 2.75 && Math.abs(nextZ - (-37.0)) > 2.45) {
-            nextZ = nextZ > -37.0 ? -34.55 : -39.45;
-          } else if (!onQifoSpan) {
-            nextX = prevX <= 26.4 ? 26.4 : (prevX >= 33.8 ? 33.8 : prevX);
-          }
         } else {
-          // Block walking into the East river water away from both bridges
           nextX = prevX <= 26.4 ? 26.4 : (prevX >= 33.8 ? 33.8 : prevX);
         }
       }
@@ -7993,6 +8948,7 @@ class BuddhistPracticeGame {
           this.promptHuixiangBeforeExit(() => {
             this.playerGroup.position.set(0, 0.2, 2.2);
             this.playerGroup.rotation.y = 0;
+            this.cameraAngle = Math.PI;
           });
         }
         if (nextZ < 0) {
@@ -8101,89 +9057,136 @@ class BuddhistPracticeGame {
         }
       }
 
-      // 4A. RELOCATED SEVEN-BUDDHA HALL (七佛殿) ATOP SEVEN-BUDDHA MOUNTAIN (x in [114.6, 134.2], z in [-51.2, -22.8])
-      if (nextZ > -51.4 && nextZ < -22.6) {
-        if (prevX <= 114.5 && nextX > 114.5) {
-          const inDoorGap = Math.abs(nextZ - (-37.0)) < 3.6;
-          if (!inDoorGap || !this.canEnterQifoHall() || this.state.wearingShoes) {
-            nextX = 114.5;
-            if (inDoorGap && this.state.wearingShoes && this.canEnterQifoHall()) {
-              this.walkTarget = null;
-              const now = performance.now();
-              if (now - (this._shoeWarnTime || 0) > 2000) {
-                this._shoeWarnTime = now;
-                this.showToast(this.t(
-                  '👟 Please take off your shoes at the rack [⏎ E] before entering 7-Buddha Hall!',
-                  '👟 请先在七佛殿门口鞋架处【脱鞋】[⏎ E]，净足入殿礼拜七佛！'
-                ));
-              }
-            }
-          }
-        }
-        // Prompt 「回向」 right before exiting 七佛殿 doorway (walking out west past x = 114.6)
-        if (prevX > 114.7 && nextX <= 114.7 && Math.abs(prevZ - (-37.0)) < 14.0) {
+      // 4A. RELOCATED SEVEN-BUDDHA HALL (七佛殿) ATOP WEST SEVEN-BUDDHA MOUNTAIN (x in [-106.2, -86.6], z in [-11.0, 19.0])
+      const wasInQifoWest = prevX < -86.6 && prevX > -106.2 && prevZ > -11.0 && prevZ < 19.0;
+      if (wasInQifoWest) {
+        // Prompt 「回向」 right before exiting 七佛殿 doorway (walking out East past x = -86.6)
+        if (nextX >= -86.6 && Math.abs(prevZ - 4.0) < 3.6) {
           nextX = prevX;
           nextZ = prevZ;
           this.walkTarget = null;
           this.promptHuixiangBeforeExit(() => {
-            this.playerGroup.position.set(111.5, 16.5, -37.0);
-            this.playerGroup.rotation.y = -Math.PI / 2;
+            this.playerGroup.position.set(-83.5, 16.5, 4.0);
+            this.playerGroup.rotation.y = Math.PI / 2;
+            this.cameraAngle = -Math.PI / 2;
           });
-        }
-        if (nextX > 115.0) {
-          nextX = Math.min(132.4, nextX);
-          nextZ = Math.max(-50.2, Math.min(-23.8, nextZ));
-          if (nextX > 114.6 && nextX < 115.4 && Math.abs(nextZ - (-37.0)) >= 3.6) {
-            nextX = prevX < 114.9 ? 114.5 : 115.5;
+        } else {
+          nextX = Math.max(-105.2, nextX);
+          nextZ = Math.max(-10.0, Math.min(18.0, nextZ));
+          if (nextX > -87.4 && Math.abs(nextZ - 4.0) >= 3.6) {
+            nextX = -87.4;
           }
-          // Solid 7-Buddha Offering Table (x in [125.6, 128.0], z in [-40.4, -33.6])
-          if (nextX > 125.6 && nextX < 128.0 && nextZ > -40.4 && nextZ < -33.6) {
-            const pL = nextX - 125.6;
-            const pR = 128.0 - nextX;
-            const pF = nextZ - (-40.4);
-            const pB = -33.6 - nextZ;
+          // Solid 7-Buddha Offering Table (x in [-100.0, -97.6], z in [0.6, 7.4])
+          if (nextX > -100.0 && nextX < -97.6 && nextZ > 0.6 && nextZ < 7.4) {
+            const pL = nextX - (-100.0);
+            const pR = -97.6 - nextX;
+            const pF = nextZ - 0.6;
+            const pB = 7.4 - nextZ;
             const mP = Math.min(pL, pR, pF, pB);
-            if (mP === pL) nextX = 125.6;
-            else if (mP === pR) nextX = 128.0;
-            else if (mP === pF) nextZ = -40.4;
-            else nextZ = -33.6;
+            if (mP === pL) nextX = -100.0;
+            else if (mP === pR) nextX = -97.6;
+            else if (mP === pF) nextZ = 0.6;
+            else nextZ = 7.4;
           }
-          // Solid 7-Buddha Altar Platform (x > 128.8)
-          if (nextX > 128.8 && nextZ > -49.6 && nextZ < -24.4) {
-            nextX = 128.8;
+          // Solid 7-Buddha Altar Platform (x < -100.8)
+          if (nextX < -100.8 && nextZ > -9.2 && nextZ < 17.2) {
+            nextX = -100.8;
+          }
+        }
+      } else if (nextX > -106.4 && nextX < -86.4 && nextZ > -11.2 && nextZ < 19.2) {
+        const inDoorGap = Math.abs(nextZ - 4.0) < 3.6 && prevX >= -86.6;
+        if (!inDoorGap || !this.canEnterQifoHall() || this.state.wearingShoes) {
+          if (inDoorGap && !this.canEnterQifoHall()) {
+            nextX = -86.4;
+            this.walkTarget = null;
+            const now = performance.now();
+            if (now - (this._qifoWarnTime || 0) > 2000) {
+              this._qifoWarnTime = now;
+              this.showToast(this.t(
+                '🔒 Complete at least 5 Good Deeds (10 VP) to open 七佛殿!',
+                '🔒 请先完成至少 5 项善行（10 功德），方能进入七佛殿！'
+              ));
+            }
+          } else if (inDoorGap && this.state.wearingShoes) {
+            nextX = -86.4;
+            this.walkTarget = null;
+            const now = performance.now();
+            if (now - (this._shoeWarnTime || 0) > 2000) {
+              this._shoeWarnTime = now;
+              this.showToast(this.t(
+                '👟 Please take off your shoes at the rack [⏎ E] before entering 7-Buddha Hall!',
+                '👟 请先在七佛殿门口鞋架处【脱鞋】[⏎ E]，净足入殿礼拜七佛！'
+              ));
+            }
+          } else {
+            const pE = -86.4 - nextX;
+            const pW = nextX - (-106.4);
+            const pN = nextZ - (-11.2);
+            const pS = 19.2 - nextZ;
+            const mP = Math.min(pE, pW, pN, pS);
+            if (mP === pE) nextX = -86.4;
+            else if (mP === pW) nextX = -106.4;
+            else if (mP === pN) nextZ = -11.2;
+            else nextZ = 19.2;
           }
         }
       }
 
-      // 4B. WEST LONGEVITY HALL (长寿殿) OPEN SUMMIT PLAZA, INTERIOR WALLS, SHOE-CHECK & STATUE PEDESTAL COLLISION
-      const wasInChangshou = prevX < -86.6 && prevX > -105.4 && prevZ > -8.4 && prevZ < 16.4;
+      // Expanded World Outer Boundaries (West Summit x=-122 -> East Peak x=142, South peak z=114 -> North z=-54)
+      nextX = Math.max(-122, Math.min(142, nextX));
+      nextZ = Math.max(-54, Math.min(114, nextZ));
+    } else if (this.currentScene === 'changshou_map') {
+      // Lotus Stream Bridge Guard along x in [8.8, 15.2]
+      if (nextX > 8.8 && nextX < 15.2) {
+        if (Math.abs(nextZ - 4.0) > 2.45) {
+          if (Math.abs(prevZ - 4.0) <= 2.45) {
+            nextZ = nextZ > 4.0 ? 6.45 : 1.55;
+          } else {
+            nextX = prevX >= 15.2 ? 15.2 : 8.8;
+          }
+        }
+      }
+
+      // 长寿殿 (Longevity Hall) at (-66, 16.5, 4.0), Walls, Shoe Check & Pedestal Collision
+      const wasInChangshou = prevX < -56.6 && prevX > -75.4 && prevZ > -8.4 && prevZ < 16.4;
       if (wasInChangshou) {
-        nextX = Math.max(-104.2, nextX);
-        nextZ = Math.max(-7.5, Math.min(15.5, nextZ));
-        if (nextX > -87.4 && Math.abs(nextZ - 4.0) >= 3.4) {
-          nextX = -87.4;
+        if (nextX >= -56.6 && Math.abs(nextZ - 4.0) < 3.4) {
+          nextX = prevX;
+          nextZ = prevZ;
+          this.walkTarget = null;
+          this.promptHuixiangBeforeExit(() => {
+            this.playerGroup.position.set(-53.5, 16.5, 4.0);
+            this.playerGroup.rotation.y = Math.PI / 2;
+            this.cameraAngle = -Math.PI / 2;
+          });
+        } else {
+          nextX = Math.max(-74.2, nextX);
+          nextZ = Math.max(-7.5, Math.min(15.5, nextZ));
+          if (nextX > -57.4 && Math.abs(nextZ - 4.0) >= 3.4) {
+            nextX = -57.4;
+          }
+          // Solid 长寿殿 Offering Altar Table (x in [-69.1, -67.1], z in [1.1, 6.9])
+          if (nextX > -69.1 && nextX < -67.1 && nextZ > 1.1 && nextZ < 6.9) {
+            const pL = nextX - (-69.1);
+            const pR = -67.1 - nextX;
+            const pF = nextZ - 1.1;
+            const pB = 6.9 - nextZ;
+            const mP = Math.min(pL, pR, pF, pB);
+            if (mP === pL) nextX = -69.1;
+            else if (mP === pR) nextX = -67.1;
+            else if (mP === pF) nextZ = 1.1;
+            else nextZ = 6.9;
+          }
+          // Solid 长寿佛 Statue Pedestal (x < -69.1, z in [1.4, 6.6])
+          if (nextX < -69.1 && nextZ > 1.4 && nextZ < 6.6) {
+            nextX = -69.1;
+          }
         }
-        // Solid 长寿殿 Offering Altar Table (x in [-99.1, -97.1], z in [1.1, 6.9])
-        if (nextX > -99.1 && nextX < -97.1 && nextZ > 1.1 && nextZ < 6.9) {
-          const pL = nextX - (-99.1);
-          const pR = -97.1 - nextX;
-          const pF = nextZ - 1.1;
-          const pB = 6.9 - nextZ;
-          const mP = Math.min(pL, pR, pF, pB);
-          if (mP === pL) nextX = -99.1;
-          else if (mP === pR) nextX = -97.1;
-          else if (mP === pF) nextZ = 1.1;
-          else nextZ = 6.9;
-        }
-        // Solid 长寿佛 Statue Pedestal (x < -99.1, z in [1.4, 6.6])
-        if (nextX < -99.1 && nextZ > 1.4 && nextZ < 6.6) {
-          nextX = -99.1;
-        }
-      } else if (nextX > -105.5 && nextX < -86.4 && nextZ > -8.5 && nextZ < 16.5) {
-        const inDoorGap = Math.abs(nextZ - 4.0) < 3.4 && prevX >= -86.6;
+      } else if (nextX > -75.5 && nextX < -56.4 && nextZ > -8.5 && nextZ < 16.5) {
+        const inDoorGap = Math.abs(nextZ - 4.0) < 3.4 && prevX >= -56.6;
         if (!inDoorGap || this.state.wearingShoes) {
           if (inDoorGap && this.state.wearingShoes) {
-            nextX = -86.4;
+            nextX = -56.4;
             this.walkTarget = null;
             const now = performance.now();
             if (now - (this._shoeWarnTime || 0) > 2000) {
@@ -8194,22 +9197,21 @@ class BuddhistPracticeGame {
               ));
             }
           } else {
-            const pE = -86.4 - nextX;
-            const pW = nextX - (-105.5);
+            const pE = -56.4 - nextX;
+            const pW = nextX - (-75.5);
             const pN = nextZ - (-8.5);
             const pS = 16.5 - nextZ;
             const mP = Math.min(pE, pW, pN, pS);
-            if (mP === pE) nextX = -86.4;
-            else if (mP === pW) nextX = -105.5;
+            if (mP === pE) nextX = -56.4;
+            else if (mP === pW) nextX = -75.5;
             else if (mP === pN) nextZ = -8.5;
             else nextZ = 16.5;
           }
         }
       }
 
-      // Expanded World Outer Boundaries (West Summit x=-122 -> East Twin Peaks x=142, South peak z=114 -> North 七佛殿 z=-54)
-      nextX = Math.max(-122, Math.min(142, nextX));
-      nextZ = Math.max(-54, Math.min(114, nextZ));
+      nextX = Math.max(-88, Math.min(36, nextX));
+      nextZ = Math.max(-26, Math.min(34, nextZ));
     } else {
       const r = Math.hypot(nextX, nextZ);
       if (r > 16.5) {
@@ -8337,6 +9339,20 @@ class BuddhistPracticeGame {
         const ud = cl.userData || {};
         cl.position.x = (ud.baseX || 90) + Math.sin(elapsed * (ud.speed || 0.3) + (ud.phase || 0)) * 3.2;
         cl.position.y = (ud.baseY || 20) + Math.cos(elapsed * 0.55 + (ud.phase || 0)) * 0.4;
+      });
+    }
+
+    // Float gentle fireflies around player during Moonlit Night theme (静夜流萤)
+    if (this.nightFireflyGroup && this.nightFireflyGroup.visible && this._fireflySpecs) {
+      const p = this.playerGroup.position;
+      this.nightFireflyGroup.position.set(p.x, p.y, p.z);
+      this._fireflySpecs.forEach((sp) => {
+        sp.mesh.position.set(
+          sp.ox + Math.sin(elapsed * sp.speed + sp.phase) * 1.4,
+          sp.baseH + Math.cos(elapsed * (sp.speed * 1.3) + sp.phase) * 0.55,
+          sp.oz + Math.cos(elapsed * (sp.speed * 0.9) + sp.phase) * 1.4
+        );
+        sp.mesh.material.opacity = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(elapsed * 3.2 + sp.phase));
       });
     }
 
@@ -8478,13 +9494,71 @@ class BuddhistPracticeGame {
       }
     }
 
-    // Gently sway the 3D Hanging Wish Plaques on the Bodhi Wishing Tree branches
+    // Gently sway the 3D Bodhi Tree foliage, drifting leaves, and Hanging Bodhi Leaf Wishes!
+    const wishesStation = (this.deedStations || []).find((st) => st.deed && st.deed.id === 'good_wishes');
+    if (wishesStation && wishesStation.group && wishesStation.group.userData) {
+      const wud = wishesStation.group.userData;
+      const windClusters = wud.windLeafClusters || [];
+      windClusters.forEach((cluster, idx) => {
+        if (!cluster) return;
+        const phase = (cluster.userData && typeof cluster.userData.windPhase === 'number') ? cluster.userData.windPhase : idx * 0.6;
+        const swayAmp = 0.085;
+        const breeze = Math.sin(elapsed * 1.45 + phase) + Math.sin(elapsed * 2.9 + phase * 1.7) * 0.35;
+        cluster.rotation.z = breeze * swayAmp;
+        cluster.rotation.x = Math.cos(elapsed * 1.15 + phase) * swayAmp * 0.7;
+      });
+      const drifting = wud.driftingLeaves || [];
+      drifting.forEach((dLeaf, idx) => {
+        if (!dLeaf) return;
+        const ud = dLeaf.userData || {};
+        const phase = ud.phase || idx * 0.7;
+        const speed = (ud.speed || 0.35) * 0.35;
+        const baseX = typeof ud.baseX === 'number' ? ud.baseX : dLeaf.position.x;
+        const baseZ = typeof ud.baseZ === 'number' ? ud.baseZ : dLeaf.position.z;
+        const cycle = (elapsed * speed + phase) % 1;
+        const startY = 5.4;
+        dLeaf.position.y = startY - cycle * (startY - 1.15);
+        dLeaf.position.x = baseX + Math.sin(elapsed * 1.6 + phase + cycle * 5.0) * 0.9;
+        dLeaf.position.z = baseZ + Math.cos(elapsed * 1.35 + phase + cycle * 4.0) * 0.9;
+        dLeaf.rotation.x = elapsed * 1.4 + phase;
+        dLeaf.rotation.y = elapsed * 1.9 + phase;
+        dLeaf.rotation.z = Math.sin(elapsed * 2.2 + phase) * 0.8;
+      });
+    }
+
     if (this.wishingTreePlaquesGroup && this.wishingTreePlaquesGroup.children.length > 0) {
       this.wishingTreePlaquesGroup.children.forEach((plaquePivot, idx) => {
         const phase = plaquePivot.userData.swayPhase || idx;
-        plaquePivot.rotation.z = Math.sin(elapsed * 2.1 + phase) * 0.1;
-        plaquePivot.rotation.x = Math.cos(elapsed * 1.7 + phase) * 0.06;
+        plaquePivot.rotation.z = Math.sin(elapsed * 2.1 + phase) * 0.12 + Math.sin(elapsed * 0.9 + phase) * 0.04;
+        plaquePivot.rotation.x = Math.cos(elapsed * 1.7 + phase) * 0.07;
       });
+    }
+
+    // Animate Flying Bodhi Leaf Wish during the serene Wishing Tree Quest View
+    if (this._bodhiQuestState) {
+      const bqs = this._bodhiQuestState;
+      bqs.age += dt;
+      if (this._flyingWishLeaf) {
+        const u = Math.min(1, bqs.age / bqs.flightDur);
+        const ease = 1 - Math.pow(1 - u, 3);
+        const arcLift = Math.sin(u * Math.PI) * 1.35;
+        const swirl = (1 - u) * 0.9;
+        this._flyingWishLeaf.position.set(
+          THREE.MathUtils.lerp(bqs.startPos.x, bqs.endPos.x, ease) + Math.sin(u * Math.PI * 2.2) * swirl,
+          THREE.MathUtils.lerp(bqs.startPos.y, bqs.endPos.y, ease) + arcLift,
+          THREE.MathUtils.lerp(bqs.startPos.z, bqs.endPos.z, ease) + Math.cos(u * Math.PI * 2.2) * swirl * 0.7
+        );
+        this._flyingWishLeaf.rotation.y = elapsed * 2.2 * (1 - u * 0.65);
+        this._flyingWishLeaf.rotation.z = Math.sin(elapsed * 2.8) * 0.16;
+        if (u >= 1 && !bqs.landed) {
+          bqs.landed = true;
+          this._flyingWishLeaf.visible = false;
+          this.rebuildWishingTreePlaques();
+        }
+      }
+      if (bqs.age >= bqs.duration) {
+        this.endBodhiWishQuestView();
+      }
     }
 
     // Animate 90+ Festive Confetti Particles showering in the sky above the Prayer Hall Gate!
@@ -8569,6 +9643,19 @@ class BuddhistPracticeGame {
   }
 
   updateCamera(dt) {
+    if (this._bodhiQuestState) {
+      const bqs = this._bodhiQuestState;
+      const orbitA = 0.25 + bqs.age * 0.14;
+      const desiredPos = new THREE.Vector3(
+        bqs.treeCenter.x + Math.sin(orbitA) * 9.5,
+        bqs.treeCenter.y + 1.8,
+        bqs.treeCenter.z + Math.cos(orbitA) * 9.5
+      );
+      this.camera.position.lerp(desiredPos, Math.min(1, dt * 3.8));
+      this.camera.lookAt(bqs.treeCenter);
+      return;
+    }
+
     if (this.cutsceneState) {
       this.cutsceneState.age += dt;
       const cs = this.cutsceneState;
@@ -8616,8 +9703,8 @@ class BuddhistPracticeGame {
     const inChangshouHall = this.isInsideChangshouHall();
 
     if (inQifoHall && !this._wasInQifoHallCamera) {
-      this.cameraAngle = -Math.PI / 2;
-      if (!this.isSeatedOnMat) this.playerGroup.rotation.y = Math.PI / 2;
+      this.cameraAngle = Math.PI / 2;
+      if (!this.isSeatedOnMat) this.playerGroup.rotation.y = -Math.PI / 2;
     }
     if (inWenshuHall && !this._wasInWenshuHallCamera) {
       this.cameraAngle = -Math.PI / 2;
@@ -8655,8 +9742,15 @@ class BuddhistPracticeGame {
     if (this.wenshuHallGroup && this.wenshuHallGroup.userData && this.wenshuHallGroup.userData.frontRoofCutaway) {
       this.wenshuHallGroup.userData.frontRoofCutaway.visible = !inWenshuHall;
     }
+    const changshouCutawayActive = inChangshouHall || (
+      this.currentScene === 'changshou_map' &&
+      pPos.x < -52.0 &&
+      pPos.x > -58.0 &&
+      Math.abs(pPos.z - 4.0) < 13.0 &&
+      this.canEnterChangshouHall()
+    );
     if (this.changshouHallGroup && this.changshouHallGroup.userData && this.changshouHallGroup.userData.frontRoofCutaway) {
-      this.changshouHallGroup.userData.frontRoofCutaway.visible = !inChangshouHall;
+      this.changshouHallGroup.userData.frontRoofCutaway.visible = !changshouCutawayActive;
     }
 
     const nearStupa =
@@ -8712,20 +9806,34 @@ class BuddhistPracticeGame {
         );
       }
     } else if (inQifoHall) {
-      // Relocated 七佛殿 atop Seven-Buddha Mountain (facing East +X toward all 7 Buddhas!)
-      const dzFromCenter = pPos.z - (-37.0);
-      target = new THREE.Vector3(
-        Math.max(pPos.x + 6.5, 131.4),
-        pPos.y + 4.1,
-        -37.0 + dzFromCenter * 0.42
+      // Relocated 七佛殿 atop the West Summit (-96, 16.5, 4): front East gate & doors remain solid!
+      const exitingEast = !this.isSeatedOnMat && (
+        (pPos.x > -95.0 && Math.sin(this.playerGroup.rotation.y) > 0.35) ||
+        Math.sin(this.cameraAngle) < -0.35
       );
-      const camDist = this.isSeatedOnMat ? 11.4 : Math.max(12.2, Math.min(this.cameraDistance, 15.0));
-      const angleOffset = this.cameraAngle - (-Math.PI / 2);
-      desiredPos = new THREE.Vector3(
-        Math.max(111.5, Math.min(125.0, pPos.x - Math.cos(angleOffset) * camDist)),
-        pPos.y + 2.35,
-        Math.max(-49.0, Math.min(-25.0, -37.0 + dzFromCenter * 0.55 + Math.sin(angleOffset) * camDist))
-      );
+      if (exitingEast) {
+        // Clear view looking East (+X) straight out through the real crimson Gate & Open Doors!
+        target = new THREE.Vector3(pPos.x + 8.5, pPos.y + 2.0, 4.0);
+        desiredPos = new THREE.Vector3(
+          Math.max(-103.5, pPos.x - 8.2),
+          pPos.y + 2.4,
+          4.0 + (pPos.z - 4.0) * 0.45
+        );
+      } else {
+        const dzFromCenter = pPos.z - 4.0;
+        target = new THREE.Vector3(
+          Math.min(pPos.x - 6.5, -103.4),
+          pPos.y + 4.1,
+          4.0 + dzFromCenter * 0.42
+        );
+        const camDist = this.isSeatedOnMat ? 11.4 : Math.max(11.0, Math.min(this.cameraDistance, 14.5));
+        const angleOffset = this.cameraAngle - (Math.PI / 2);
+        desiredPos = new THREE.Vector3(
+          Math.min(-87.8, Math.max(-97.5, pPos.x + Math.cos(angleOffset) * camDist)),
+          pPos.y + 2.35,
+          Math.max(-8.0, Math.min(16.0, 4.0 + dzFromCenter * 0.55 - Math.sin(angleOffset) * camDist))
+        );
+      }
     } else if (inWenshuHall) {
       // Center camera straight on Manjushri Bodhisattva (whole body + Blue Lion + lotus throne + overhead plaque), matching Prayer Hall!
       const dzFromCenter = pPos.z - 4.0;
@@ -8742,21 +9850,41 @@ class BuddhistPracticeGame {
         Math.max(-6.8, Math.min(14.8, 4.0 + dzFromCenter * 0.55 + Math.sin(angleOffset) * camDist))
       );
     } else if (inChangshouHall) {
-      // Center camera straight on Amitayus Longevity Buddha (whole body + throne + attendant deities + Thangka + plaque), matching Prayer Hall!
+      // Center camera straight on Amitayus Longevity Buddha (-71.4, 16.92, 4.0) in changshou_map!
       const dzFromCenter = pPos.z - 4.0;
       target = new THREE.Vector3(
-        Math.min(pPos.x - 6.5, -101.4),
+        Math.min(pPos.x - 6.5, -71.4),
         pPos.y + 3.45,
         4.0 + dzFromCenter * 0.35
       );
       const camDist = this.isSeatedOnMat ? 10.2 : Math.max(11.4, Math.min(this.cameraDistance, 13.8));
       const angleOffset = this.cameraAngle - (Math.PI / 2);
       desiredPos = new THREE.Vector3(
-        Math.min(-83.5, Math.max(-97.0, pPos.x + Math.cos(angleOffset) * camDist)),
+        Math.min(-53.5, Math.max(-67.0, pPos.x + Math.cos(angleOffset) * camDist)),
         pPos.y + 2.25,
         Math.max(-6.8, Math.min(14.8, 4.0 + dzFromCenter * 0.55 - Math.sin(angleOffset) * camDist))
       );
     } else {
+      if (this._camManualCooldown > 0) this._camManualCooldown = Math.max(0, this._camManualCooldown - dt);
+      if (this._camFollowAlignTimer > 0) this._camFollowAlignTimer = Math.max(0, this._camFollowAlignTimer - dt);
+
+      const allowAutoFollow =
+        !this.isDraggingCam &&
+        !this.isSeatedOnMat &&
+        !this.seatedScenic &&
+        !this.isAutoCirclingStupa &&
+        this._camManualCooldown <= 0 &&
+        this._camFollowAlignTimer > 0;
+
+      if (allowAutoFollow) {
+        const desiredCamAngle = this.playerGroup.rotation.y + Math.PI;
+        let deltaCam = (desiredCamAngle - this.cameraAngle) % (Math.PI * 2);
+        if (deltaCam > Math.PI) deltaCam -= Math.PI * 2;
+        if (deltaCam < -Math.PI) deltaCam += Math.PI * 2;
+        const followRate = Math.abs(deltaCam) > 1.8 && !this._allow180CamFlip ? 2.6 : 4.2;
+        this.cameraAngle += deltaCam * Math.min(1, dt * followRate);
+      }
+
       const lookHeight = this.isSeatedOnMat ? 2.1 : nearStupa ? 3.2 : 1.75;
       target = pPos.clone().add(new THREE.Vector3(0, lookHeight, 0));
 
@@ -8791,7 +9919,7 @@ class BuddhistPracticeGame {
     const promptEl = document.getElementById('proximity-prompt');
     const hallBarEl = document.getElementById('meditation-mat-bar');
 
-    if (this.currentScene !== 'public_temple') {
+    if (this.currentScene !== 'public_temple' && this.currentScene !== 'changshou_map') {
       document.body.classList.remove('in-sacred-hall');
       this._wasInsideAnyHall = false;
       promptEl.style.display = 'none';
@@ -8801,6 +9929,8 @@ class BuddhistPracticeGame {
       this._nearbyBuddhaIdx = null;
       this._nearOfferingTableHall = null;
       this._nearLampWallSide = null;
+      this._nearChangshouReturnPortal = false;
+      this._nearbyQifoPondId = null;
       this._lastSpokenPromptId = null;
       return;
     }
@@ -8816,6 +9946,8 @@ class BuddhistPracticeGame {
     this._nearShoeRack = null;
     this._nearLampWallSide = null;
     this._nearbyThreeBuddhaIdx = null;
+    this._nearChangshouReturnPortal = false;
+    this._nearbyQifoPondId = null;
     document.body.classList.toggle('in-sacred-hall', insideAnyHall);
     if (insideAnyHall && !this._wasInsideAnyHall && isMobile) {
       const sp = document.getElementById('side-panel');
@@ -8845,14 +9977,10 @@ class BuddhistPracticeGame {
           b6.textContent = phoneMode ? this.t('🔊Chant', '🔊念诵中') : this.t('🔊 Pronouncing...', '🔊 正在念诵…');
           return;
         }
-        if (activeId === 'wenshu') {
+        if (activeId === 'om_mani') {
           b6.textContent = phoneMode
-            ? this.t('🦁Mantra', '🦁文殊咒')
-            : this.t(`🦁 Mantra [L] (${this.state.wenshuMantraCount || 0})`, `🦁 文殊咒 [L] (${this.state.wenshuMantraCount || 0})`);
-        } else if (activeId === 'changshou') {
-          b6.textContent = phoneMode
-            ? this.t('🏺Pray', '🏺长寿咒')
-            : this.t(`🏺 Longv [L] (${this.state.changshouPrayerCount || 0})`, `🏺 长寿咒 [L] (${this.state.changshouPrayerCount || 0})`);
+            ? this.t('📿Mani', '📿六字咒')
+            : this.t(`📿 Om Mani [L] (${this.state.omManiCount || 0})`, `📿 六字大明咒 [L] (${this.state.omManiCount || 0})`);
         } else {
           const pCnt = this.state.amitofoCount || 0;
           const cyc = pCnt > 0 && pCnt % 100 === 0 ? 100 : pCnt % 100;
@@ -9051,8 +10179,8 @@ class BuddhistPracticeGame {
     this._nearHallTeleportStart = false;
     this._nearbyWenshuSeatIdx = null;
 
-    // Inside West Sanctuary 长寿殿 (Amitayus Longevity Hall)
-    if (insideChangshou) {
+    // Inside Longevity Sanctuary 长寿殿 (in changshou_map at x = -66, y = 16.5, z = 4.0)
+    if (insideChangshou || (this.isSeatedOnMat && this._seatedMatHall === 'changshou')) {
       if (hallBarEl) {
         hallBarEl.style.display = 'flex';
         configureHallBar('changshou');
@@ -9065,7 +10193,7 @@ class BuddhistPracticeGame {
       this._nearbyLotusPondId = null;
       this._nearbyChangshouSeatIdx = null;
 
-      if (!this.isSeatedOnMat && pPos.x < -94.4 && Math.abs(pPos.z - 4.0) < 4.2) {
+      if (!this.isSeatedOnMat && pPos.x < -64.4 && Math.abs(pPos.z - 4.0) < 4.2) {
         if (!this.areHallOfferingsComplete('changshou')) {
           this._nearChangshou = false;
           this._nearOfferingTableHall = 'changshou';
@@ -9243,7 +10371,7 @@ class BuddhistPracticeGame {
       return;
     }
 
-    // Inside Relocated Seven-Buddha Hall (七佛殿 atop Seven-Buddha Mountain)
+    // Inside Relocated Seven-Buddha Hall (七佛殿 atop West Summit at -96, 16.5, 4.0, facing +X)
     if (insideQifo || (this.isSeatedOnMat && this._seatedMatHall === 'qifo')) {
       if (hallBarEl) {
         hallBarEl.style.display = 'flex';
@@ -9252,7 +10380,7 @@ class BuddhistPracticeGame {
       this._nearStupa = false;
       this._nearbyDeedId = null;
 
-      if (!this.isSeatedOnMat && pPos.x > 123.5 && this.buddhaStatues.length > 0) {
+      if (!this.isSeatedOnMat && pPos.x < -94.0 && this.buddhaStatues.length > 0) {
         if (!this.areHallOfferingsComplete('prayer')) {
           this._nearbyBuddhaIdx = null;
           this._nearOfferingTableHall = 'prayer';
@@ -9314,266 +10442,103 @@ class BuddhistPracticeGame {
     }
     this._nearbyBuddhaIdx = null;
 
-    // 0. Near any of the 7 White Stupas on Mount Wutai Path!
-    let closestStupaIdx = -1;
-    let closestStupaDist = Infinity;
-    (this.stupaList || []).forEach((st, idx) => {
-      const d = Math.hypot(pPos.x - st.pos.x, pPos.z - st.pos.z);
-      if (d < closestStupaDist) {
-        closestStupaDist = d;
-        closestStupaIdx = idx;
-      }
-    });
-    if (closestStupaIdx >= 0 && closestStupaDist < 5.6) {
-      const stObj = this.stupaList[closestStupaIdx];
-      this.activeStupaIdx = closestStupaIdx;
-      this.stupaPos.copy(stObj.pos);
-      this._nearStupa = true;
-      this._nearbyDeedId = null;
-      this._nearbySutraId = null;
-      const pct = Math.min(100, Math.round((this.stupaClockwiseAngle / (Math.PI * 2)) * 100));
-      const circledCnt = this.getCircledStupaCount();
-      const nextReqIdx = this.getNextUncircledStupaIdx();
-      const alreadyCircled = !!(this.state.circledStupas && this.state.circledStupas[closestStupaIdx]);
-      const stBenefit = this.dField(stObj.data, 'wishAndBenefit', 'zhWishAndBenefit') || this.t('Brings calm wisdom and opens Manjushri Hall.', '成就清净智慧，开启文殊殿大门。');
-      const stLabel = this.dField(stObj.data, 'label', 'zhLabel') || this.dField(stObj.data, 'name', 'zhName');
-
-      let btnLabel = this.t(`☸️ Circle Stupa #${closestStupaIdx + 1} Clockwise (1/1)`, `☸️ 顺时针绕第 ${closestStupaIdx + 1} 座白塔一圈`);
-      let statusBadge = this.t(`In Order (${circledCnt}/7)`, `按序绕塔 (${circledCnt}/7)`);
-      if (alreadyCircled) {
-        statusBadge = this.t('✅ Circled', '✅ 已圆满');
-        btnLabel = nextReqIdx === -1
-          ? this.t('🦁 Enter Manjushri Hall', '🦁 进入文殊殿')
-          : this.t(`➡️ Go to Next: Stupa #${nextReqIdx + 1}`, `➡️ 前往下一座：第 ${nextReqIdx + 1} 座白塔`);
-      } else if (nextReqIdx !== -1 && closestStupaIdx !== nextReqIdx) {
-        statusBadge = this.t(`Next is #${nextReqIdx + 1}`, `下一座为第 ${nextReqIdx + 1} 座`);
-        btnLabel = this.t(`☸️ Go to Stupa #${nextReqIdx + 1} (In Order)`, `☸️ 请先按序绕第 ${nextReqIdx + 1} 座白塔`);
-      }
-
-      const stupaSpeech = this.t(`White Stupa #${closestStupaIdx + 1}: ${stBenefit}`, `第 ${closestStupaIdx + 1} 座白塔功德：${stBenefit}`);
-      if (this._lastSpokenPromptId !== `stupa_${closestStupaIdx}`) {
-        this._lastSpokenPromptId = `stupa_${closestStupaIdx}`;
-        window.templeAudio.speakText(stupaSpeech, false);
-      }
-
-      promptEl.style.display = 'flex';
-      promptEl.innerHTML = `
-        <div class="quest-box-1">
-          <div class="talk-portrait-col">
-            <div class="talk-avatar-frame">☸️</div>
-            <div class="talk-speaker-badge">${this.t(`Stupa #${closestStupaIdx + 1}/7`, `白塔 #${closestStupaIdx + 1}/7`)}</div>
-          </div>
-          <div class="talk-bubble-body">
-            <div class="box-tag">
-              <span class="quest-instruction-pill">📍 ${stLabel} (${pct}% · ${circledCnt}/7)</span>
-              <button class="listen-voice-btn" onclick="window.templeAudio.speakText('${stupaSpeech.replace(/'/g, "\\'")}', true)">${this.t('🔊 Listen', '🔊 朗读')}</button>
-            </div>
-            <div class="box-title">✨ "${stBenefit}"</div>
-          </div>
-        </div>
-        <div class="quest-box-2">
-          <div class="box-tag"><span>${this.t('✨ Stupa Benefit', '✨ 绕塔功德利益')}</span><span>${statusBadge}</span></div>
-          <button class="quest-enter-btn" onclick="window.game.startClockwiseStupaWalk(${closestStupaIdx})">
-            <span>${btnLabel}</span>
-            <span class="enter-key-badge">⏎ ${this.t('Enter', '绕塔')}</span>
-          </button>
-        </div>
-      `;
-      return;
-    }
+    // 0. Near any of the 7 White Stupas on Mount Wutai Path! (public_temple only)
     this._nearStupa = false;
-
-    // 0B. Near any Sutra Book Reading Chair Station ascending Mount Wutai!
     this._nearbySutraId = null;
-    for (const st of (this.sutraStations || [])) {
-      if (Math.hypot(pPos.x - st.pos.x, pPos.z - st.pos.z) < 4.2) {
-        this._nearbySutraId = st.book.id;
-        const isRead = !!(this.state.readSutras && this.state.readSutras[st.book.id]);
-        const bkTitle = this.dField(st.book, 'title', 'zhTitle');
-        const onePara = (this.isZh()
-          ? (st.book.zhPages && st.book.zhPages[0])
-          : (st.book.pages && st.book.pages[0])) || bkTitle;
-        const cleanSpeech = String(onePara).replace(/['"\\]/g, '');
+    if (this.currentScene === 'public_temple') {
+      let closestStupaIdx = -1;
+      let closestStupaDist = Infinity;
+      (this.stupaList || []).forEach((st, idx) => {
+        const d = Math.hypot(pPos.x - st.pos.x, pPos.z - st.pos.z);
+        if (d < closestStupaDist) {
+          closestStupaDist = d;
+          closestStupaIdx = idx;
+        }
+      });
+      if (closestStupaIdx >= 0 && closestStupaDist < 5.6) {
+        const stObj = this.stupaList[closestStupaIdx];
+        this.activeStupaIdx = closestStupaIdx;
+        this.stupaPos.copy(stObj.pos);
+        this._nearStupa = true;
+        this._nearbyDeedId = null;
+        this._nearbySutraId = null;
+        const pct = Math.min(100, Math.round((this.stupaClockwiseAngle / (Math.PI * 2)) * 100));
+        const circledCnt = this.getCircledStupaCount();
+        const nextReqIdx = this.getNextUncircledStupaIdx();
+        const alreadyCircled = !!(this.state.circledStupas && this.state.circledStupas[closestStupaIdx]);
+        const stBenefit = this.dField(stObj.data, 'wishAndBenefit', 'zhWishAndBenefit') || this.t('Brings calm wisdom and opens Manjushri Hall.', '成就清净智慧，开启文殊殿大门。');
+        const stLabel = this.dField(stObj.data, 'label', 'zhLabel') || this.dField(stObj.data, 'name', 'zhName');
+
+        let btnLabel = this.t(`☸️ Circle Stupa #${closestStupaIdx + 1} Clockwise (1/1)`, `☸️ 顺时针绕第 ${closestStupaIdx + 1} 座白塔一圈`);
+        let statusBadge = this.t(`In Order (${circledCnt}/7)`, `按序绕塔 (${circledCnt}/7)`);
+        if (alreadyCircled) {
+          statusBadge = this.t('✅ Circled', '✅ 已圆满');
+          btnLabel = nextReqIdx === -1
+            ? this.t('🦁 Enter Manjushri Hall', '🦁 进入文殊殿')
+            : this.t(`➡️ Go to Next: Stupa #${nextReqIdx + 1}`, `➡️ 前往下一座：第 ${nextReqIdx + 1} 座白塔`);
+        } else if (nextReqIdx !== -1 && closestStupaIdx !== nextReqIdx) {
+          statusBadge = this.t(`Next is #${nextReqIdx + 1}`, `下一座为第 ${nextReqIdx + 1} 座`);
+          btnLabel = this.t(`☸️ Go to Stupa #${nextReqIdx + 1} (In Order)`, `☸️ 请先按序绕第 ${nextReqIdx + 1} 座白塔`);
+        }
+
+        const stupaSpeech = this.t(`White Stupa #${closestStupaIdx + 1}: ${stBenefit}`, `第 ${closestStupaIdx + 1} 座白塔功德：${stBenefit}`);
+        if (this._lastSpokenPromptId !== `stupa_${closestStupaIdx}`) {
+          this._lastSpokenPromptId = `stupa_${closestStupaIdx}`;
+          window.templeAudio.speakText(stupaSpeech, false);
+        }
+
         promptEl.style.display = 'flex';
         promptEl.innerHTML = `
           <div class="quest-box-1">
-            <div class="talk-portrait-col"><div class="talk-avatar-frame">📖</div><div class="talk-speaker-badge">${bkTitle}</div></div>
+            <div class="talk-portrait-col">
+              <div class="talk-avatar-frame">☸️</div>
+              <div class="talk-speaker-badge">${this.t(`Stupa #${closestStupaIdx + 1}/7`, `白塔 #${closestStupaIdx + 1}/7`)}</div>
+            </div>
             <div class="talk-bubble-body">
               <div class="box-tag">
-                <span>${this.t('✨ Study Table', '✨ 五台山学习桌')} · ${isRead ? this.t('✅ Done', '✅ 已学') : this.t('+5 VP', '+5 功德')}</span>
-                <button class="listen-voice-btn" onclick="window.templeAudio.speakText('${cleanSpeech}', true)">${this.t('🔊 Listen', '🔊 朗读')}</button>
+                <span class="quest-instruction-pill">📍 ${stLabel} (${pct}% · ${circledCnt}/7)</span>
+                <button class="listen-voice-btn" onclick="window.templeAudio.speakText('${stupaSpeech.replace(/'/g, "\\'")}', true)">${this.t('🔊 Listen', '🔊 朗读')}</button>
               </div>
-              <div class="box-title" style="font-size:16.5px; line-height:1.45;">${onePara}</div>
+              <div class="box-title">✨ "${stBenefit}"</div>
             </div>
           </div>
           <div class="quest-box-2">
-            <button class="quest-enter-btn" onclick="window.game.visitAndReadSutra('${st.book.id}')">
-              <span>${isRead ? this.t('📖 Review Study', '📖 再次温习') : this.t('📖 Sit & Study', '📖 坐下学习')}</span>
-              <span class="enter-key-badge">⏎ E</span>
+            <div class="box-tag"><span>${this.t('✨ Stupa Benefit', '✨ 绕塔功德利益')}</span><span>${statusBadge}</span></div>
+            <button class="quest-enter-btn" onclick="window.game.startClockwiseStupaWalk(${closestStupaIdx})">
+              <span>${btnLabel}</span>
+              <span class="enter-key-badge">⏎ ${this.t('Enter', '绕塔')}</span>
             </button>
           </div>
         `;
         return;
       }
-    }
+      this._nearStupa = false;
 
-    // 0C. Near any West Flower Garden (floriculture along avenue to 长寿殿)
-    this._nearbyFlowerGardenId = null;
-    for (const st of (this.flowerGardenStations || [])) {
-      const gPos = st.garden ? st.garden.pos : (st.group ? st.group.position : null);
-      if (gPos && Math.hypot(pPos.x - gPos.x, pPos.z - gPos.z) < 4.8) {
-        this._nearbyFlowerGardenId = st.garden.id;
-        const isPlanted = !!(this.state.plantedFlowerGardens && this.state.plantedFlowerGardens[st.garden.id]);
-        const gTitle = this.dField(st.garden, 'title', 'zhTitle');
-        const gDesc = this.dField(st.garden, 'desc', 'zhDesc');
-        promptEl.style.display = 'flex';
-        promptEl.innerHTML = `
-          <div class="quest-box-1">
-            <div class="talk-portrait-col"><div class="talk-avatar-frame">🌸</div><div class="talk-speaker-badge">${this.t('Flower Garden', '西苑百花园')}</div></div>
-            <div class="talk-bubble-body">
-              <div class="box-tag"><span>✨ ${gTitle}</span><span>${isPlanted ? this.t('✅ Bloomed', '✅ 鲜花盛开') : this.t('+5 VP', '+5 功德')}</span></div>
-              <div class="box-title">${gDesc}</div>
-            </div>
-          </div>
-          <div class="quest-box-2">
-            <button class="quest-enter-btn" onclick="window.game.plantFlowerGarden('${st.garden.id}')">
-              <span>${isPlanted ? this.t('🌺 Admire Blossoms', '🌺 欣赏百花盛开') : this.t('🌱 Plant Flowers (+5 VP)', '🌱 亲手种下鲜花 (+5 功德)')}</span>
-              <span class="enter-key-badge">⏎ E</span>
-            </button>
-          </div>
-        `;
-        return;
-      }
-    }
-
-    // 0D. Near any of the 4 West Sacred Flower Ponds (优钵罗花 · 波头摩 · 分陀利花 · 拘物头花)
-    this._nearbyLotusPondId = null;
-    for (const st of (this.lotusPondStations || [])) {
-      const lPos = st.pond ? st.pond.pos : (st.group ? st.group.position : null);
-      if (lPos && Math.hypot(pPos.x - lPos.x, pPos.z - lPos.z) < 5.2) {
-        this._nearbyLotusPondId = st.pond.id;
-        const isPlanted = !!(this.state.plantedLotusPonds && this.state.plantedLotusPonds[st.pond.id]);
-        const pTitle = this.dField(st.pond, 'title', 'zhTitle');
-        const pDesc = this.dField(st.pond, 'desc', 'zhDesc');
-        promptEl.style.display = 'flex';
-        promptEl.innerHTML = `
-          <div class="quest-box-1">
-            <div class="talk-portrait-col"><div class="talk-avatar-frame">🪷</div><div class="talk-speaker-badge">${this.t('Flower Pond', '圣花宝池')}</div></div>
-            <div class="talk-bubble-body">
-              <div class="box-tag"><span>✨ ${pTitle}</span><span>${isPlanted ? this.t('✅ Blooming', '✅ 圣花盛绽') : this.t('+5 VP', '+5 功德')}</span></div>
-              <div class="box-title">${pDesc}</div>
-            </div>
-          </div>
-          <div class="quest-box-2">
-            <button class="quest-enter-btn" onclick="window.game.plantLotusPond('${st.pond.id}')">
-              <span>${isPlanted ? this.t('🪷 Admire Sacred Flowers', '🪷 瞻仰圣花宝池') : this.t('🪷 Plant Sacred Flowers (+5 VP)', '🪷 池中栽种圣花 (+5 功德)')}</span>
-              <span class="enter-key-badge">⏎ E</span>
-            </button>
-          </div>
-        `;
-        return;
-      }
-    }
-
-    // Near any Uncompleted Good Deed Location (or the Bodhi Wishing Tree anytime!)
-    this._nearbyDeedId = null;
-    for (const st of this.deedStations) {
-      const isWishingTree = st.deed.id === 'good_wishes';
-      if (!this.state.completedDeeds[st.deed.id] || isWishingTree) {
-        const d = Math.hypot(pPos.x - st.deed.pos.x, pPos.z - st.deed.pos.z);
-        if (d < 8.2) {
-          this._nearbyDeedId = st.deed.id;
-          const dNpc = this.dField(st.deed, 'npcName', 'zhNpcName') || this.t('Friend', '善友');
-          const dLandmark = this.dField(st.deed, 'landmarkName', 'zhLandmarkName');
-          const dTaskText = this.dField(st.deed, 'taskBoxText', 'zhTaskBoxText');
-          const dLesson = this.dField(st.deed, 'virtueLesson', 'zhVirtueLesson') || this.t('Virtue: Kindness & Compassion', '善心：慈悲与利他');
-          const dActionLabel = this.dField(st.deed, 'actionButtonLabel', 'zhActionButtonLabel');
-          const cleanSpeech = (dTaskText || '').replace(/["“”]/g, '');
-          const escapedForAttr = cleanSpeech.replace(/'/g, "\\'");
-
-          if (this._lastSpokenPromptId !== st.deed.id) {
-            this._lastSpokenPromptId = st.deed.id;
-            window.templeAudio.speakText(this.t(`${dNpc} says: ${cleanSpeech}`, `${dNpc}说：${cleanSpeech}`), false);
-          }
-
-          const speakerImgSrc = st.deed.speakerImg
-            ? ((window.INLINE_ASSETS && window.INLINE_ASSETS[st.deed.speakerImg]) || st.deed.speakerImg)
-            : '';
-          const avatarHtml = speakerImgSrc
-            ? `<img src="${speakerImgSrc}" alt="${dNpc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
-            : (st.deed.speakerEmoji || st.deed.emoji);
-
+      // 0B. Near any Sutra Book Reading Chair Station ascending Mount Wutai!
+      for (const st of (this.sutraStations || [])) {
+        if (Math.hypot(pPos.x - st.pos.x, pPos.z - st.pos.z) < 4.2) {
+          this._nearbySutraId = st.book.id;
+          const isRead = !!(this.state.readSutras && this.state.readSutras[st.book.id]);
+          const bkTitle = this.dField(st.book, 'title', 'zhTitle');
+          const onePara = (this.isZh()
+            ? (st.book.zhPages && st.book.zhPages[0])
+            : (st.book.pages && st.book.pages[0])) || bkTitle;
+          const cleanSpeech = String(onePara).replace(/['"\\]/g, '');
           promptEl.style.display = 'flex';
           promptEl.innerHTML = `
             <div class="quest-box-1">
-              <div class="talk-portrait-col">
-                <div class="talk-avatar-frame">${avatarHtml}</div>
-                <div class="talk-speaker-badge">${dNpc}</div>
-              </div>
+              <div class="talk-portrait-col"><div class="talk-avatar-frame">📖</div><div class="talk-speaker-badge">${bkTitle}</div></div>
               <div class="talk-bubble-body">
                 <div class="box-tag">
-                  <span class="quest-instruction-pill">${this.t('📜 QUEST INSTRUCTION', '📜 善行任务说明')} · 📍 ${dLandmark}</span>
-                  <button class="listen-voice-btn" onclick="window.templeAudio.speakText('${escapedForAttr}', true)">${this.t('🔊 Listen', '🔊 朗读')}</button>
+                  <span>${this.t('✨ Study Table', '✨ 五台山学习桌')} · ${isRead ? this.t('✅ Done', '✅ 已学') : this.t('+5 VP', '+5 功德')}</span>
+                  <button class="listen-voice-btn" onclick="window.templeAudio.speakText('${cleanSpeech}', true)">${this.t('🔊 Listen', '🔊 朗读')}</button>
                 </div>
-                <div class="box-title">${dTaskText}</div>
-                <div class="talk-lesson-pill">🌟 ${dLesson}</div>
+                <div class="box-title" style="font-size:16.5px; line-height:1.45;">${onePara}</div>
               </div>
             </div>
             <div class="quest-box-2">
-              <div class="box-tag"><span>✨ ${isWishingTree ? this.t('8 Good Wishes', '八大善愿挂牌') : this.t('Good Deed Quest', '行善积德任务')}</span><span>+${st.deed.points} ${this.t('VP', '功德')}</span></div>
-              <button class="quest-enter-btn" onclick="window.game.performGoodDeed('${st.deed.id}')">
-                <span>${isWishingTree ? this.t('🌳 Choose 8 Wishes', '🌳 选择挂祈愿牌') : dActionLabel}</span>
-                <span class="enter-key-badge">⏎ ${this.t('Enter', '执行')}</span>
-              </button>
-            </div>
-          `;
-          return;
-        }
-      }
-    }
-
-    // Near the Giant Bronze Temple Bell Pavilion
-    this._nearBell = false;
-    const bellPos = window.GAME_DATA.BELL_PAVILION_POS;
-    if (bellPos && Math.hypot(pPos.x - bellPos.x, pPos.z - bellPos.z) < 6.4) {
-      this._nearBell = true;
-      promptEl.style.display = 'flex';
-      promptEl.innerHTML = `
-        <div class="quest-box-1" style="padding:10px 14px;">
-          <div class="talk-portrait-col"><div class="talk-avatar-frame">🔔</div><div class="talk-speaker-badge">${this.t('Bell Pavilion', '梵钟宝亭')}</div></div>
-          <div class="talk-bubble-body">
-            <div class="box-title">${this.t('"Strike the sacred bronze bell softly and listen as peace fills the mountain valley."', '“轻叩寺院铜钟，聆听洪亮梵音回荡清凉山谷。”')}</div>
-          </div>
-        </div>
-        <div class="quest-box-2">
-          <button class="quest-enter-btn" onclick="window.game.ringTempleBell()">
-            <span>${this.t('🔔 Ring Temple Bell', '🔔 撞响寺院大钟')}</span>
-            <span class="enter-key-badge">⏎ E</span>
-          </button>
-        </div>
-      `;
-      return;
-    }
-
-    // Near a Scenic Sit & Contemplate Pier or River Bench (suppressed while auto-walking to a deed such as Build Wisdom Bridge)
-    this._nearbySeat = null;
-    if (!this._walkingDeedTargetId) {
-      for (const seat of (window.GAME_DATA.SCENIC_SEATS || [])) {
-        if (Math.hypot(pPos.x - seat.x, pPos.z - seat.z) < 2.6) {
-          this._nearbySeat = seat;
-          const alreadySeated = this.seatedScenic && this.seatedScenic.id === seat.id;
-          const seatName = this.dField(seat, 'name', 'zhName');
-          promptEl.style.display = 'flex';
-          promptEl.innerHTML = `
-            <div class="quest-box-1" style="padding:10px 14px;">
-              <div class="talk-portrait-col"><div class="talk-avatar-frame">${seat.emoji}</div><div class="talk-speaker-badge">${seatName}</div></div>
-              <div class="talk-bubble-body">
-                <div class="box-title">${alreadySeated ? this.t('"Breathe gently and enjoy the quiet waters and mountain breeze."', '“调匀呼吸，静赏池水清风与白花禅意。”') : this.t(`"A quiet meditation seat awaits at ${seatName}."`, `“${seatName} 备有清净禅座，可供静坐小憩。”`)}</div>
-              </div>
-            </div>
-            <div class="quest-box-2">
-              <button class="quest-enter-btn" onclick="window.game.toggleSitScenicSpot(window.GAME_DATA.SCENIC_SEATS.find(s => s.id === '${seat.id}'))">
-                <span>${alreadySeated ? this.t('🚶 Stand Up', '🚶 起身离座') : this.t('🧘 Sit & Enjoy View', '🧘 花下禅坐静休')}</span>
+              <button class="quest-enter-btn" onclick="window.game.visitAndReadSutra('${st.book.id}')">
+                <span>${isRead ? this.t('📖 Review Study', '📖 再次温习') : this.t('📖 Sit & Study', '📖 坐下学习')}</span>
                 <span class="enter-key-badge">⏎ E</span>
               </button>
             </div>
@@ -9583,12 +10548,234 @@ class BuddhistPracticeGame {
       }
     }
 
+    // 0C. Near any Flower Garden (floriculture along avenue to 长寿殿 in changshou_map)
+    this._nearbyFlowerGardenId = null;
+    if (this.currentScene === 'changshou_map') {
+      for (const st of (this.flowerGardenStations || [])) {
+        const gPos = (st.garden && st.garden.pos) || (st.garden && typeof st.garden.x === 'number' ? st.garden : null) || (st.group ? st.group.position : null);
+        if (gPos && Math.hypot(pPos.x - gPos.x, pPos.z - gPos.z) < 4.8) {
+          this._nearbyFlowerGardenId = st.garden.id;
+          const isPlanted = !!(this.state.plantedFlowerGardens && this.state.plantedFlowerGardens[st.garden.id]);
+          const gTitle = this.dField(st.garden, 'title', 'zhTitle');
+          const gDesc = this.dField(st.garden, 'desc', 'zhDesc');
+          promptEl.style.display = 'flex';
+          promptEl.innerHTML = `
+            <div class="quest-box-1">
+              <div class="talk-portrait-col"><div class="talk-avatar-frame">🌸</div><div class="talk-speaker-badge">${this.t('Flower Garden', '长寿百花园')}</div></div>
+              <div class="talk-bubble-body">
+                <div class="box-tag"><span>✨ ${gTitle}</span><span>${isPlanted ? this.t('✅ Bloomed', '✅ 鲜花盛开') : this.t('+5 VP', '+5 功德')}</span></div>
+                <div class="box-title">${gDesc}</div>
+              </div>
+            </div>
+            <div class="quest-box-2">
+              <button class="quest-enter-btn" onclick="window.game.plantFlowerGarden('${st.garden.id}')">
+                <span>${isPlanted ? this.t('🌺 Admire Blossoms', '🌺 欣赏百花盛开') : this.t('🌱 Plant Flowers (+5 VP)', '🌱 亲手种下鲜花 (+5 功德)')}</span>
+                <span class="enter-key-badge">⏎ E</span>
+              </button>
+            </div>
+          `;
+          return;
+        }
+      }
+
+      // 0D. Near any of the 4 Sacred Flower Ponds (优钵罗花 · 波头摩 · 分陀利花 · 拘物头花)
+      this._nearbyLotusPondId = null;
+      for (const st of (this.lotusPondStations || [])) {
+        const lPos = (st.pond && st.pond.pos) || (st.pond && typeof st.pond.x === 'number' ? st.pond : null) || (st.group ? st.group.position : null);
+        if (lPos && Math.hypot(pPos.x - lPos.x, pPos.z - lPos.z) < 5.2) {
+          this._nearbyLotusPondId = st.pond.id;
+          const isPlanted = !!(this.state.plantedLotusPonds && this.state.plantedLotusPonds[st.pond.id]);
+          const pTitle = this.dField(st.pond, 'title', 'zhTitle');
+          const pDesc = this.dField(st.pond, 'desc', 'zhDesc');
+          promptEl.style.display = 'flex';
+          promptEl.innerHTML = `
+            <div class="quest-box-1">
+              <div class="talk-portrait-col"><div class="talk-avatar-frame">🪷</div><div class="talk-speaker-badge">${this.t('Flower Pond', '圣花宝池')}</div></div>
+              <div class="talk-bubble-body">
+                <div class="box-tag"><span>✨ ${pTitle}</span><span>${isPlanted ? this.t('✅ Blooming', '✅ 圣花盛绽') : this.t('+5 VP', '+5 功德')}</span></div>
+                <div class="box-title">${pDesc}</div>
+              </div>
+            </div>
+            <div class="quest-box-2">
+              <button class="quest-enter-btn" onclick="window.game.plantLotusPond('${st.pond.id}')">
+                <span>${isPlanted ? this.t('🪷 Admire Sacred Flowers', '🪷 瞻仰圣花宝池') : this.t('🪷 Plant Sacred Flowers (+5 VP)', '🪷 池中栽种圣花 (+5 功德)')}</span>
+                <span class="enter-key-badge">⏎ E</span>
+              </button>
+            </div>
+          `;
+          return;
+        }
+      }
+
+      // 0E. Return Portal back to Main Sanctuary Map (East trailhead x=28, z=4)
+      if (Math.hypot(pPos.x - 28.0, pPos.z - 4.0) < 5.0) {
+        this._nearChangshouReturnPortal = true;
+        promptEl.style.display = 'flex';
+        promptEl.innerHTML = `
+          <div class="quest-box-1">
+            <div class="talk-portrait-col"><div class="talk-avatar-frame">⛩️</div><div class="talk-speaker-badge">${this.t('Sanctuary Gate', '归返山门')}</div></div>
+            <div class="talk-bubble-body">
+              <div class="box-tag"><span>✨ ${this.t('Stop #1 · Longevity Sanctuary', '第 1 站 · 长寿殿圣境')}</span></div>
+              <div class="box-title">${this.t('Step through the golden portal to return to the Main Temple Valley.', '踏入金色山门光圈，即可返回主地图清凉山谷。')}</div>
+            </div>
+          </div>
+          <div class="quest-box-2">
+            <button class="quest-enter-btn" onclick="window.game.switchScene('public_temple')">
+              <span>${this.t('↩️ Return to Main Map', '↩️ 返回主地图')}</span>
+              <span class="enter-key-badge">⏎ E</span>
+            </button>
+          </div>
+        `;
+        return;
+      }
+    }
+
+    // Near any Uncompleted Good Deed Location, Bell Pavilion, or Scenic Seat (public_temple only)
+    this._nearbyDeedId = null;
+    this._nearBell = false;
+    this._nearbySeat = null;
+    if (this.currentScene === 'public_temple') {
+      for (const st of this.deedStations) {
+        const isWishingTree = st.deed.id === 'good_wishes';
+        if (!this.state.completedDeeds[st.deed.id] || isWishingTree) {
+          const d = Math.hypot(pPos.x - st.deed.pos.x, pPos.z - st.deed.pos.z);
+          if (d < 8.2) {
+            this._nearbyDeedId = st.deed.id;
+            const dNpc = this.dField(st.deed, 'npcName', 'zhNpcName') || this.t('Friend', '善友');
+            const dLandmark = this.dField(st.deed, 'landmarkName', 'zhLandmarkName');
+            const dTaskText = this.dField(st.deed, 'taskBoxText', 'zhTaskBoxText');
+            const dLesson = this.dField(st.deed, 'virtueLesson', 'zhVirtueLesson') || this.t('Virtue: Kindness & Compassion', '善心：慈悲与利他');
+            const dActionLabel = this.dField(st.deed, 'actionButtonLabel', 'zhActionButtonLabel');
+            const cleanSpeech = (dTaskText || '').replace(/["“”]/g, '');
+            const escapedForAttr = cleanSpeech.replace(/'/g, "\\'");
+
+            if (this._lastSpokenPromptId !== st.deed.id) {
+              this._lastSpokenPromptId = st.deed.id;
+              window.templeAudio.speakText(this.t(`${dNpc} says: ${cleanSpeech}`, `${dNpc}说：${cleanSpeech}`), false);
+            }
+
+            const speakerImgSrc = st.deed.speakerImg
+              ? ((window.INLINE_ASSETS && window.INLINE_ASSETS[st.deed.speakerImg]) || st.deed.speakerImg)
+              : '';
+            const avatarHtml = speakerImgSrc
+              ? `<img src="${speakerImgSrc}" alt="${dNpc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" />`
+              : (st.deed.speakerEmoji || st.deed.emoji);
+
+            promptEl.style.display = 'flex';
+            promptEl.innerHTML = `
+              <div class="quest-box-1">
+                <div class="talk-portrait-col">
+                  <div class="talk-avatar-frame">${avatarHtml}</div>
+                  <div class="talk-speaker-badge">${dNpc}</div>
+                </div>
+                <div class="talk-bubble-body">
+                  <div class="box-tag">
+                    <span class="quest-instruction-pill">${this.t('📜 QUEST INSTRUCTION', '📜 善行任务说明')} · 📍 ${dLandmark}</span>
+                    <button class="listen-voice-btn" onclick="window.templeAudio.speakText('${escapedForAttr}', true)">${this.t('🔊 Listen', '🔊 朗读')}</button>
+                  </div>
+                  <div class="box-title">${dTaskText}</div>
+                  <div class="talk-lesson-pill">🌟 ${dLesson}</div>
+                </div>
+              </div>
+              <div class="quest-box-2">
+                <div class="box-tag"><span>${isWishingTree ? this.t('🍃 Bodhi Leaf Wishes', '🍃 菩提叶祈愿') : this.t('Good Deed Quest', '行善积德任务')}</span><span>+${st.deed.points} ${this.t('VP', '功德')}</span></div>
+                <button class="quest-enter-btn" onclick="window.game.performGoodDeed('${st.deed.id}')">
+                  <span>${isWishingTree ? this.t('🍃 Make a Bodhi Wish', '🍃 选择菩提叶祈愿') : dActionLabel}</span>
+                  <span class="enter-key-badge">⏎ ${this.t('Enter', '执行')}</span>
+                </button>
+              </div>
+            `;
+            return;
+          }
+        }
+      }
+
+      // 4 Interactive Sacred Lotus Ponds along the West stairway to 七佛殿 (+5 VP each!)
+      this._nearbyQifoPondId = null;
+      for (const st of (this.qifoPondStations || [])) {
+        const lPos = (st.pond && st.pond.pos) || (st.group ? st.group.position : null);
+        if (lPos && Math.hypot(pPos.x - lPos.x, pPos.z - lPos.z) < 5.2) {
+          this._nearbyQifoPondId = st.pond.id;
+          const isPlanted = !!(this.state.plantedQifoPonds && this.state.plantedQifoPonds[st.pond.id]);
+          const pTitle = this.dField(st.pond, 'title', 'zhTitle');
+          const pDesc = this.dField(st.pond, 'desc', 'zhDesc');
+          promptEl.style.display = 'flex';
+          promptEl.innerHTML = `
+            <div class="quest-box-1">
+              <div class="talk-portrait-col"><div class="talk-avatar-frame">🪷</div><div class="talk-speaker-badge">${this.t('7-Buddha Pond', '七佛殿前花池')}</div></div>
+              <div class="talk-bubble-body">
+                <div class="box-tag"><span>✨ ${pTitle}</span><span>${isPlanted ? this.t('✅ Blooming', '✅ 圣花盛绽') : this.t('+5 VP', '+5 功德')}</span></div>
+                <div class="box-title">${pDesc}</div>
+              </div>
+            </div>
+            <div class="quest-box-2">
+              <button class="quest-enter-btn" onclick="window.game.plantQifoLotusPond('${st.pond.id}')">
+                <span>${isPlanted ? this.t('🪷 Admire Sacred Flowers', '🪷 瞻仰圣花宝池') : this.t('🪷 Plant Sacred Flowers (+5 VP)', '🪷 池中栽种圣花 (+5 功德)')}</span>
+                <span class="enter-key-badge">⏎ E</span>
+              </button>
+            </div>
+          `;
+          return;
+        }
+      }
+
+      // Near the Giant Bronze Temple Bell Pavilion
+      const bellPos = window.GAME_DATA.BELL_PAVILION_POS;
+      if (bellPos && Math.hypot(pPos.x - bellPos.x, pPos.z - bellPos.z) < 6.4) {
+        this._nearBell = true;
+        promptEl.style.display = 'flex';
+        promptEl.innerHTML = `
+          <div class="quest-box-1" style="padding:10px 14px;">
+            <div class="talk-portrait-col"><div class="talk-avatar-frame">🔔</div><div class="talk-speaker-badge">${this.t('Bell Pavilion', '梵钟宝亭')}</div></div>
+            <div class="talk-bubble-body">
+              <div class="box-title">${this.t('"Strike the sacred bronze bell softly and listen as peace fills the mountain valley."', '“轻叩寺院铜钟，聆听洪亮梵音回荡清凉山谷。”')}</div>
+            </div>
+          </div>
+          <div class="quest-box-2">
+            <button class="quest-enter-btn" onclick="window.game.ringTempleBell()">
+              <span>${this.t('🔔 Ring Temple Bell', '🔔 撞响寺院大钟')}</span>
+              <span class="enter-key-badge">⏎ E</span>
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      // Near a Scenic Sit & Contemplate Pier or River Bench (suppressed while auto-walking to a deed such as Build Wisdom Bridge)
+      if (!this._walkingDeedTargetId) {
+        for (const seat of (window.GAME_DATA.SCENIC_SEATS || [])) {
+          if (Math.hypot(pPos.x - seat.x, pPos.z - seat.z) < 2.6) {
+            this._nearbySeat = seat;
+            const alreadySeated = this.seatedScenic && this.seatedScenic.id === seat.id;
+            const seatName = this.dField(seat, 'name', 'zhName');
+            promptEl.style.display = 'flex';
+            promptEl.innerHTML = `
+              <div class="quest-box-1" style="padding:10px 14px;">
+                <div class="talk-portrait-col"><div class="talk-avatar-frame">${seat.emoji}</div><div class="talk-speaker-badge">${seatName}</div></div>
+                <div class="talk-bubble-body">
+                  <div class="box-title">${alreadySeated ? this.t('"Breathe gently and enjoy the quiet waters and mountain breeze."', '“调匀呼吸，静赏池水清风与白花禅意。”') : this.t(`"A quiet meditation seat awaits at ${seatName}."`, `“${seatName} 备有清净禅座，可供静坐小憩。”`)}</div>
+                </div>
+              </div>
+              <div class="quest-box-2">
+                <button class="quest-enter-btn" onclick="window.game.toggleSitScenicSpot(window.GAME_DATA.SCENIC_SEATS.find(s => s.id === '${seat.id}'))">
+                  <span>${alreadySeated ? this.t('🚶 Stand Up', '🚶 起身离座') : this.t('🧘 Sit & Enjoy View', '🧘 花下禅坐静休')}</span>
+                  <span class="enter-key-badge">⏎ E</span>
+                </button>
+              </div>
+            `;
+            return;
+          }
+        }
+      }
+    }
+
     // Outside Hall Entrance Shoe Rack Quest: Take Off Shoes before entering, Put Shoes On after exiting!
     const nearestRackInfo = this.getNearestShoeRack(pPos);
-    const inFrontOfAnyDoor =
-      (Math.abs(pPos.x) < 6.8 && pPos.z >= -0.2 && pPos.z < 5.6) ||
-      (pPos.x > 108.0 && pPos.x < 115.6 && (Math.abs(pPos.z - 4.0) < 5.8 || Math.abs(pPos.z - (-37.0)) < 6.4)) ||
-      (pPos.x < -80.0 && pPos.x > -87.4 && Math.abs(pPos.z - 4.0) < 6.4);
+    const inFrontOfAnyDoor = this.currentScene === 'changshou_map'
+      ? (pPos.x < -50.0 && pPos.x > -57.4 && Math.abs(pPos.z - 4.0) < 6.4)
+      : ((Math.abs(pPos.x) < 6.8 && pPos.z >= -0.2 && pPos.z < 5.6) ||
+        (pPos.x > 108.0 && pPos.x < 115.6 && Math.abs(pPos.z - 4.0) < 5.8) ||
+        (pPos.x < -80.0 && pPos.x > -87.4 && Math.abs(pPos.z - 4.0) < 6.4));
     const nearRack = nearestRackInfo && (nearestRackInfo.dist < 5.2 || (inFrontOfAnyDoor && this.state.wearingShoes) || (!this.state.wearingShoes && nearestRackInfo.dist < 14.0));
     if (nearRack && !this.isSeatedOnMat) {
       const rk = nearestRackInfo.rack;
@@ -9630,12 +10817,11 @@ class BuddhistPracticeGame {
 
     // In front of 大雄宝殿, 七佛殿, 文殊殿, or 长寿佛殿: Teleport back to Starting Point
     const hp = this.playerGroup.position;
-    const inFrontOfPrayerHall = Math.abs(hp.x) < 5.5 && hp.z >= 0.0 && hp.z < 11.2;
-    const inFrontOfWenshuHall = hp.x > 106.5 && hp.x < 116.5 && Math.abs(hp.z - 4.0) < 5.5;
-    const inFrontOfQifoHall = hp.x > 106.5 && hp.x < 116.5 && Math.abs(hp.z - (-37.0)) < 5.5;
-    const inFrontOfChangshouHall = hp.x < -78.5 && hp.x > -88.5 && Math.abs(hp.z - 4.0) < 5.5;
+    const inFrontOfPrayerHall = this.currentScene === 'public_temple' && Math.abs(hp.x) < 5.5 && hp.z >= 0.0 && hp.z < 11.2;
+    const inFrontOfWenshuHall = this.currentScene === 'public_temple' && hp.x > 106.5 && hp.x < 116.5 && Math.abs(hp.z - 4.0) < 5.5;
+    const inFrontOfQifoHall = this.currentScene === 'public_temple' && hp.x < -78.5 && hp.x > -88.5 && Math.abs(hp.z - 4.0) < 5.5;
+    const inFrontOfChangshouHall = this.currentScene === 'changshou_map' && hp.x < -48.5 && hp.x > -58.5 && Math.abs(hp.z - 4.0) < 5.5;
     this._nearHallTeleportStart = !this.isSeatedOnMat
-      && this.currentScene === 'public_temple'
       && (inFrontOfPrayerHall || inFrontOfWenshuHall || inFrontOfQifoHall || inFrontOfChangshouHall);
     if (this._nearHallTeleportStart) {
       const hallLabel = inFrontOfWenshuHall

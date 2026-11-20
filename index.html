@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>水月图</title>
-  <link rel="stylesheet" href="css/style.css?v=20261118" />
+  <link rel="stylesheet" href="css/style.css?v=20261120" />
   <!-- Three.js 3D Engine & GLTFLoader for Custom 3D Models -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -70,14 +70,20 @@
         <button class="scene-tab active" id="tab-courtyard" title="返回起点 / Return to Start">⛰️ 起点</button>
         <button class="scene-tab" id="tab-stupa" title="七佛塔 / 7 Stupas">☸️ 七佛塔</button>
         <button class="scene-tab locked" id="tab-prayer-hall" title="大雄宝殿 / Grand Mahavira Hall">🔒 大雄宝殿</button>
-        <button class="scene-tab locked" id="tab-qifo-hall" title="七佛殿 / Seven-Buddha Hall (Atop 7-Buddha Mountain)">🔒 七佛殿</button>
+        <button class="scene-tab locked" id="tab-qifo-hall" title="七佛殿 / Seven-Buddha Hall (West Mountain Summit)">🔒 七佛殿</button>
         <button class="scene-tab locked" id="tab-wenshu-hall" title="文殊殿 / Manjushri Hall">🔒 文殊殿</button>
-        <button class="scene-tab" id="tab-changshou-hall" title="长寿殿 / Longevity Hall">🏺 长寿殿</button>
+        <button class="scene-tab locked" id="tab-changshou-hall" title="长寿殿地图 / Longevity Hall Map (Stop 1)">🔒 长寿殿</button>
         <button class="hud-btn primary-red" id="hud-btn-qianfodian" tabindex="-1" title="修行技能与千佛殿 / Skills &amp; 千佛殿">🏮 技能·千佛</button>
         <button class="hud-btn primary-red" id="btn-toggle-menu-drawer" title="打开菜单 / Open Menu">☰ 菜单</button>
       </div>
       <div id="top-right-sub-bar">
         <div class="online-pilgrims-pill" id="online-pilgrims-pill" title="同游行者 / Online Pilgrims">👥 在线 <span id="online-pilgrims-count">1</span></div>
+        <button class="hud-btn" id="btn-top-bgm" tabindex="-1" title="梵音背景音乐 / Sacred Sanctuary Music">🎵 梵音: 关</button>
+        <div class="top-bgm-vol-wrap" title="调节梵音音量 / Adjust Music Volume" style="display:inline-flex; align-items:center; gap:4px; background:rgba(255,250,235,0.92); border:1.5px solid #d4941c; border-radius:16px; padding:2px 8px;">
+          <input type="range" id="top-bgm-volume-slider" tabindex="-1" min="0" max="100" value="20" style="width:66px; accent-color:#b45309; cursor:pointer; vertical-align:middle;" />
+          <span id="top-bgm-volume-value" style="font-size:10.5px; font-weight:900; color:#7a1c1c; min-width:26px;">20%</span>
+        </div>
+        <button class="hud-btn" id="btn-top-sky-theme" tabindex="-1" title="切换四时禅境光影 / Switch Atmosphere">🌅 晨曦朝露</button>
         <button class="hud-btn primary-red" id="btn-top-store" tabindex="-1" title="个人空间商城 / Store (2 VP)">🏪 商城</button>
         <button class="hud-btn" id="btn-top-task-map" tabindex="-1" title="十方寻佛地图 / 10-Stop Map">🗺️ 地图</button>
         <button class="hud-btn lang-toggle-top-btn" id="hud-lang-toggle-btn" tabindex="-1" title="切换中文 / Switch to English">🌐 中文 · EN</button>
@@ -133,11 +139,17 @@
       <h3>⚙️ 声音与设置</h3>
       <div class="menu-icon-grid">
         <button class="hud-btn" id="btn-audio-toggle">🔊 音效</button>
+        <button class="hud-btn" id="btn-bgm-toggle">🎵 梵音背景音: 关</button>
         <button class="hud-btn" id="btn-voice-toggle">🗣️ 语音: 开</button>
         <button class="hud-btn" id="btn-nature-toggle">🍃 自然音: 关</button>
         <button class="hud-btn" id="btn-pure-view">👁️ 纯净视角</button>
         <a class="hud-btn" href="ShuiYueTu_Shareable_Game.html" download="ShuiYueTu_Shareable_Game.html" style="text-decoration:none; background:linear-gradient(180deg,#e8f8ee,#bfead0); border-color:#2e8b57; color:#184d2c;">📥 分享版</a>
         <button class="hud-btn reset-top-btn" id="top-reset-btn">🔄 重置进度</button>
+      </div>
+      <div class="bgm-volume-row" style="margin-top:8px; display:flex; align-items:center; gap:8px; background:rgba(255,248,230,0.85); border:1.5px solid #e6c57a; border-radius:8px; padding:6px 10px;">
+        <span id="bgm-volume-label" style="font-size:11.5px; font-weight:800; color:#6b2d12; white-space:nowrap;">🎵 梵音音量</span>
+        <input type="range" id="bgm-volume-slider" min="0" max="100" value="20" style="flex:1; accent-color:#b45309; cursor:pointer;" />
+        <span id="bgm-volume-value" style="font-size:11.5px; font-weight:800; color:#7a1c1c; min-width:34px; text-align:right;">20%</span>
       </div>
     </div>
 
@@ -213,12 +225,27 @@
     </div>
 
     <div class="controls-hint">
-      🎮 WASD / 方向键：移动 &nbsp;·&nbsp; 🦘 空格：跳跃 &nbsp;·&nbsp; ⏎ E：互动 &nbsp;·&nbsp; 🙏 L：念佛 &nbsp;·&nbsp; 🖱️ 拖动：视角
+      🎮 WASD / 方向键：转向移动（视角自动跟随前方） &nbsp;·&nbsp; 🦘 空格：跳跃 &nbsp;·&nbsp; ⏎ E：互动 &nbsp;·&nbsp; 🙏 L：念佛 &nbsp;·&nbsp; 🖱️ 拖动：自由观景
     </div>
   </div>
 
   <!-- Floating Exit Pure View Pill (Shown only when HUD is hidden for mindful contemplation) -->
   <button id="pure-view-exit-btn" class="hidden" title="Restore Interface">👁️ Show Controls</button>
+
+  <!-- Live Spatial Minimap & Compass Wayfinder -->
+  <div id="temple-minimap-wrap" aria-label="Temple Minimap">
+    <div class="minimap-header-bar">
+      <span id="minimap-zone-label">🧭 水月禅境</span>
+      <button id="btn-toggle-minimap" tabindex="-1" title="展开/收起小地图">－</button>
+    </div>
+    <div class="minimap-radar-ring" id="minimap-radar-ring">
+      <span class="minimap-cardinal n" id="minimap-dir-n">北</span>
+      <span class="minimap-cardinal s" id="minimap-dir-s">南</span>
+      <span class="minimap-cardinal w" id="minimap-dir-w">西</span>
+      <span class="minimap-cardinal e" id="minimap-dir-e">东</span>
+      <canvas id="temple-minimap-canvas" width="144" height="144"></canvas>
+    </div>
+  </div>
 
   <!-- On-Screen Touch D-Pad for Juniors / Tablets -->
   <div id="touch-dpad">
@@ -367,26 +394,41 @@
     </div>
   </div>
 
-  <!-- MODAL 6: Bodhi Wishing Tree — Simplified Traditional Wish Plaques -->
+  <!-- MODAL 6: Bodhi Wishing Tree — Serene Bodhi Leaf Wishes (菩提树叶祈愿) -->
   <div class="modal-backdrop hidden" id="wishing-tree-modal">
-    <div class="modal-card" style="width:min(620px, 95vw); border:3px solid #d4941c;">
-      <div class="modal-header">
-        <h2>🎋 Bodhi Wishing Tree</h2>
+    <div class="modal-card" style="width:min(660px, 95vw); border:3px solid #2e8b57; background:linear-gradient(180deg, #f3fbf4, #fffbeb);">
+      <div class="modal-header" style="background:linear-gradient(90deg, #1b4332, #2d6a4f); color:#fff8dc;">
+        <h2 style="color:#fde68a;">🍃 Bodhi Wishing Tree · 菩提树叶祈愿</h2>
         <button class="modal-close" id="close-wishing-tree-modal">✕</button>
       </div>
       <div class="modal-body" style="gap:10px;">
-        <p style="font-size:13.5px; font-weight:800; color:#5a250a; text-align:center;">
-          Click a traditional wish plaque to hang it on the Bodhi Tree:
+        <p id="wishing-tree-subtitle" style="font-size:13.5px; font-weight:800; color:#1b4332; text-align:center;">
+          Choose a Bodhi Leaf Wish to send flying into the serene Vajrasana Bodhi Tree:
         </p>
         <div class="wishes-grid" id="wishes-grid-container"></div>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; flex-wrap:wrap; gap:8px;">
-          <div id="selected-wish-preview" style="font-size:13px; font-weight:800; color:#8b3a1e;">
-            🎋 Click a plaque above to hang it on the tree!
+          <div id="selected-wish-preview" style="font-size:13px; font-weight:800; color:#1b4332;">
+            🍃 Click any Bodhi leaf above to watch it fly onto the tree!
           </div>
           <button class="primary-gold-btn" id="btn-confirm-hang-wish" style="padding:8px 18px; font-size:13.5px;">
             🌳 Done
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bodhi Tree Wish Quest View Overlay (Serene Flying-Leaf Scene) -->
+  <div id="bodhi-quest-overlay" class="hidden">
+    <div class="bodhi-quest-top">
+      <span class="bodhi-quest-badge" id="bodhi-quest-badge">🍃 金刚座菩提树祈愿 · Bodhi Leaf Wish Quest</span>
+      <button class="cutscene-skip-btn" id="btn-exit-bodhi-quest">✨ 完成返回</button>
+    </div>
+    <div class="bodhi-quest-bottom">
+      <div class="bodhi-quest-leaf-icon" id="bodhi-quest-emoji">🍃</div>
+      <div class="bodhi-quest-text">
+        <h3 id="bodhi-quest-title">菩提树叶载愿飞翔</h3>
+        <p id="bodhi-quest-desc">微风轻拂金刚座旁的菩提树，金色菩提叶带着您的善愿缓缓飞上树梢…</p>
       </div>
     </div>
   </div>
@@ -548,9 +590,9 @@
   </div>
 
   <!-- Game Scripts -->
-  <script src="js/data.js?v=20261118"></script>
-  <script src="js/audio.js?v=20261118"></script>
-  <script src="js/models3d.js?v=20261118"></script>
-  <script src="js/game.js?v=20261118"></script>
+  <script src="js/data.js?v=20261120"></script>
+  <script src="js/audio.js?v=20261120"></script>
+  <script src="js/models3d.js?v=20261120"></script>
+  <script src="js/game.js?v=20261120"></script>
 </body>
 </html>
