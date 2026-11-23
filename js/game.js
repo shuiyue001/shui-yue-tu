@@ -50,6 +50,7 @@ class BuddhistPracticeGame {
       changshouOfferings: { water: false, flower: false, scent: false },
       changshouPrayerCount: 0,
       readSutras: {}, // { sutra_1: true ... }
+      waterfallMeditated: false,
       personalItems: {}
     };
 
@@ -210,12 +211,17 @@ class BuddhistPracticeGame {
     this.templeBuildingGroup = new THREE.Group();
     this.sevenBuddhasGroup = new THREE.Group();
     this.changshouMapGroup = new THREE.Group();
+    this.waterfallSanctuaryGroup = new THREE.Group();
     this.personalSpaceGroup = new THREE.Group();
     this.playerGroup = new THREE.Group();
     this.charParts = {};
     this.compassArrow = null;
     this._bodhiQuestState = null;
     this._flyingWishLeaf = null;
+    this._waterfallCamPreset = 0;
+    this._waterfallElapsed = 0;
+    this._waterfallBeforeState = null;
+    this._nearWaterfallSignpost = null;
     this._mantraAutoStarted = false;
 
     // Interactive Registries
@@ -233,6 +239,7 @@ class BuddhistPracticeGame {
     this.initThree();
     this.buildPublicTempleScene();
     this.buildChangshouMapScene();
+    this.buildWaterfallSanctuaryScene();
     this.buildPersonalSpaceScene();
     this.buildPlayerCharacter();
     this.createNightFireflies();
@@ -638,6 +645,8 @@ class BuddhistPracticeGame {
     this.scene.add(this.publicTempleGroup);
     this.scene.add(this.changshouMapGroup);
     this.changshouMapGroup.visible = false;
+    this.scene.add(this.waterfallSanctuaryGroup);
+    this.waterfallSanctuaryGroup.visible = false;
     this.scene.add(this.personalSpaceGroup);
     this.personalSpaceGroup.visible = false;
 
@@ -652,6 +661,18 @@ class BuddhistPracticeGame {
     const themes = window.GAME_DATA.SKY_THEMES || [];
     const theme = themes.find((t) => t.id === this.state.skyThemeId) || themes[0];
     if (!theme) return;
+    if (this.currentScene === 'waterfall_sanctuary') {
+      if (this.scene && this.scene.background && this.scene.background.setHex) {
+        this.scene.background.setHex(0xcbe6cc);
+      }
+      if (this.scene && this.scene.fog && this.scene.fog.color && this.scene.fog.color.setHex) {
+        this.scene.fog.color.setHex(0xcfe8d0);
+      }
+      if (this.dirLight) this.dirLight.intensity = 1.08;
+      if (this.hemiLight) this.hemiLight.intensity = 0.94;
+      if (this.nightFireflyGroup) this.nightFireflyGroup.visible = false;
+      return;
+    }
     if (this.currentScene === 'public_temple' || this.currentScene === 'changshou_map') {
       if (this.scene && this.scene.background && this.scene.background.setHex) {
         this.scene.background.setHex(theme.sky);
@@ -830,6 +851,7 @@ class BuddhistPracticeGame {
     if (this._nearBell && GD.BELL_PAVILION_POS) return { x: GD.BELL_PAVILION_POS.x, z: GD.BELL_PAVILION_POS.z, scale: 1.55 };
     if (this._nearbySeat) return { x: this._nearbySeat.x, z: this._nearbySeat.z, scale: 1.05 };
     if (this._nearChangshouReturnPortal) return { x: 25.0, z: 4.0, scale: 1.4 };
+    if (this._nearWaterfallSignpost) return { x: this._nearWaterfallSignpost.x, z: this._nearWaterfallSignpost.z, scale: 1.45 };
     return null;
   }
 
@@ -1039,6 +1061,28 @@ class BuddhistPracticeGame {
         }
       });
 
+      // Mountain Waterfall Trail branch on West Path
+      if (GD.WATERFALL_SANCTUARY_DATA) {
+        const wfG = GD.WATERFALL_SANCTUARY_DATA.grovePos;
+        const wfJ = GD.WATERFALL_SANCTUARY_DATA.junctionPos;
+        const pJ = toPx(wfJ.x, wfJ.z);
+        const pG = toPx(wfG.x, wfG.z);
+        ctx.strokeStyle = 'rgba(72, 180, 168, 0.85)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(pJ.x, pJ.y);
+        ctx.lineTo(pG.x, pG.y);
+        ctx.stroke();
+        ctx.fillStyle = '#2dd4bf';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(pG.x, pG.y, 3.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        this._minimapLandmarks.push({ x: wfG.x, z: wfG.z, zh: '瀑布清流', en: 'Waterfall Stream', walkable: true });
+      }
+
       // Major Halls & Start
       const halls = [
         { x: 0, z: -20, zh: '大雄宝殿', en: 'Grand Hall', color: '#a51c1c', open: this.canEnterPrayerHall() },
@@ -1136,7 +1180,10 @@ class BuddhistPracticeGame {
     if (lbl) {
       let zoneZh = '水月禅境';
       let zoneEn = 'Monastery Valley';
-      if (this.currentScene === 'changshou_map') {
+      if (this.currentScene === 'waterfall_sanctuary') {
+        zoneZh = '瀑布清流禅境';
+        zoneEn = 'Waterfall Sanctuary';
+      } else if (this.currentScene === 'changshou_map') {
         zoneZh = '长寿殿圣境';
         zoneEn = 'Longevity Map';
       } else if (this.currentScene === 'personal_space') {
@@ -1680,6 +1727,31 @@ class BuddhistPracticeGame {
       if (isPlanted) lbl.classList.add('completed');
       this.qifoPondStations.push({ pond: pd, group: mesh, labelEl: lbl });
     });
+
+    // 8. 「瀑布清流」 Forest Waterfall Trail branching South off the Seven-Buddha Path
+    this.waterfallTrailGroup = window.TempleModels3D.createWestWaterfallTrailModel();
+    this.publicTempleGroup.add(this.waterfallTrailGroup);
+    const wfData = window.GAME_DATA.WATERFALL_SANCTUARY_DATA;
+    if (wfData) {
+      const jPos = wfData.junctionPos;
+      const gPos = wfData.grovePos;
+      const jY = window.GAME_DATA.getTerrainHeight(jPos.x, jPos.z);
+      const gY = window.GAME_DATA.getTerrainHeight(gPos.x, gPos.z);
+      this.addWorldLabel(
+        '🌊 Waterfall Trail',
+        new THREE.Vector3(jPos.x, jY + 2.75, jPos.z),
+        'public_temple',
+        () => this.enterWaterfallSanctuary(),
+        '🌊 瀑布清流'
+      );
+      this.addWorldLabel(
+        '🌊 Waterfall Sanctuary (+10 VP)',
+        new THREE.Vector3(gPos.x, gY + 2.85, gPos.z),
+        'public_temple',
+        () => this.enterWaterfallSanctuary(),
+        '🌊 瀑布清流（点击静修）'
+      );
+    }
   }
 
   // -------------------- STOP #1 MAP SCENE: 长寿殿 (LONGEVITY SANCTUARY MAP) --------------------
@@ -1836,6 +1908,149 @@ class BuddhistPracticeGame {
       '⛰️ 返回主地图'
     );
     this.syncShoeVisuals();
+  }
+
+  // -------------------- SCENE 3: 「瀑布清流」 ZEN WATERFALL MEDITATION SANCTUARY --------------------
+  buildWaterfallSanctuaryScene() {
+    if (!this.waterfallSanctuaryGroup) return;
+    while (this.waterfallSanctuaryGroup.children.length > 0) {
+      this.waterfallSanctuaryGroup.remove(this.waterfallSanctuaryGroup.children[0]);
+    }
+    this.waterfallSanctuaryModel = window.TempleModels3D.createWaterfallSanctuarySceneModel();
+    this.waterfallSanctuaryGroup.add(this.waterfallSanctuaryModel);
+  }
+
+  formatTimeMMSS(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}:${rem < 10 ? '0' : ''}${rem}`;
+  }
+
+  enterWaterfallSanctuary() {
+    if (this.currentScene === 'waterfall_sanctuary') return;
+    if (this.isSeatedOnMat) this.standUpFromMat();
+    if (this.seatedScenic) this.toggleSitScenicSpot(this.seatedScenic, false);
+    this.walkTarget = null;
+    this.isAutoCirclingStupa = false;
+
+    this._waterfallBeforeState = {
+      scene: this.currentScene === 'waterfall_sanctuary' ? 'public_temple' : this.currentScene,
+      pos: this.playerGroup.position.clone(),
+      rotY: this.playerGroup.rotation.y,
+      cameraAngle: this.cameraAngle,
+      cameraPitch: this.cameraPitch
+    };
+
+    this.currentScene = 'waterfall_sanctuary';
+    this.publicTempleGroup.visible = false;
+    if (this.changshouMapGroup) this.changshouMapGroup.visible = false;
+    this.personalSpaceGroup.visible = false;
+    if (this.waterfallSanctuaryGroup) this.waterfallSanctuaryGroup.visible = true;
+
+    this.applySkyTheme();
+    this._waterfallCamPreset = 0;
+    this._waterfallElapsed = 0;
+    this._waterfallAudioEnded = false;
+    this.cameraAngle = 0;
+    this.cameraPitch = 0.25;
+
+    // Seat the player's own 3D character peacefully beside the steaming cast-iron teapot facing the waterfall
+    this.playerGroup.position.set(-0.95, 0.54, 4.75);
+    this.playerGroup.rotation.y = 2.62;
+    if (this.charParts && this.charParts.headHalo) this.charParts.headHalo.visible = false;
+    this.setPoseMode('sit');
+
+    document.body.classList.add('waterfall-mode');
+    const overlay = document.getElementById('waterfall-sanctuary-overlay');
+    if (overlay) {
+      overlay.classList.remove('hidden', 'pure-hud');
+    }
+    const hideHudBtn = document.getElementById('btn-waterfall-hide-hud');
+    if (hideHudBtn) hideHudBtn.textContent = this.t('👁️ Pure 3D', '👁️ 纯净实景');
+
+    if (window.templeAudio && typeof window.templeAudio.startWaterfallSanctuaryAudio === 'function') {
+      const mSlider = document.getElementById('waterfall-music-slider');
+      const sSlider = document.getElementById('waterfall-stream-slider');
+      if (mSlider) mSlider.value = String(Math.round((window.templeAudio.waterfallMusicVolume ?? 0.85) * 100));
+      if (sSlider) sSlider.value = String(Math.round((window.templeAudio.waterfallStreamVolume ?? 0.38) * 100));
+      const mVal = document.getElementById('waterfall-music-val');
+      const sVal = document.getElementById('waterfall-stream-val');
+      if (mVal) mVal.textContent = `${mSlider ? mSlider.value : 85}%`;
+      if (sVal) sVal.textContent = `${sSlider ? sSlider.value : 38}%`;
+
+      window.templeAudio.startWaterfallSanctuaryAudio(() => {
+        this._waterfallAudioEnded = true;
+        this.showToast(this.t(
+          '🌊✨ 1:23 Mountain Waterfall Meditation complete — stay as long as you wish.',
+          '🌊✨ 一分二十三秒「瀑布清流」静听圆满，可继续静坐或随时起身返回山道。'
+        ));
+      });
+    }
+
+    if (!this.state.waterfallMeditated) {
+      this.state.waterfallMeditated = true;
+      this.addVirtuePoints(
+        (window.GAME_DATA.WATERFALL_SANCTUARY_DATA && window.GAME_DATA.WATERFALL_SANCTUARY_DATA.vpReward) || 10,
+        this.t('🌊 Waterfall Meditation (+10 VP)', '🌊 瀑布清流静坐 (+10 功德)'),
+        new THREE.Vector3(-0.95, 2.2, 4.75)
+      );
+      this.saveState();
+    }
+
+    this.updateMinimap(true);
+    this.showToast(this.t(
+      '🌊 Welcome to 「瀑布清流」 — sit peacefully beside the steaming tea & listen to the cascading waters.',
+      '🌊 已步入「瀑布清流」山林禅境 — 静坐茶台旁，倾听梵音清唱与轻柔溪瀑流水。'
+    ));
+  }
+
+  cycleWaterfallCameraPreset() {
+    this._waterfallCamPreset = (this._waterfallCamPreset + 1) % 3;
+    const names = [
+      this.t('🎥 Wide Pavilion & Waterfall', '🎥 禅亭飞瀑全景'),
+      this.t('🍵 Tea Table & Meditator', '🍵 茶烟静坐近景'),
+      this.t('🌿 Veranda Overlook', '🌿 木廊临水远眺')
+    ];
+    this.cameraAngle = 0;
+    this.showToast(names[this._waterfallCamPreset]);
+  }
+
+  exitWaterfallSanctuary() {
+    if (this.currentScene !== 'waterfall_sanctuary') return;
+    if (window.templeAudio && typeof window.templeAudio.stopWaterfallSanctuaryAudio === 'function') {
+      window.templeAudio.stopWaterfallSanctuaryAudio(true);
+      this.syncBgmButtonUI();
+    }
+
+    const prev = this._waterfallBeforeState || {
+      scene: 'public_temple',
+      pos: new THREE.Vector3(-41.5, window.GAME_DATA.getTerrainHeight(-41.5, 44.0), 44.0),
+      rotY: 0,
+      cameraAngle: 0,
+      cameraPitch: 0.30
+    };
+
+    document.body.classList.remove('waterfall-mode');
+    const overlay = document.getElementById('waterfall-sanctuary-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    if (this.waterfallSanctuaryGroup) this.waterfallSanctuaryGroup.visible = false;
+    if (this.charParts && this.charParts.headHalo) this.charParts.headHalo.visible = true;
+
+    this.setPoseMode('idle');
+    this.currentScene = prev.scene || 'public_temple';
+    this.publicTempleGroup.visible = this.currentScene === 'public_temple';
+    if (this.changshouMapGroup) this.changshouMapGroup.visible = this.currentScene === 'changshou_map';
+    this.personalSpaceGroup.visible = this.currentScene === 'personal_space';
+
+    this.playerGroup.position.copy(prev.pos);
+    this.playerGroup.rotation.y = prev.rotY;
+    this.cameraAngle = prev.cameraAngle;
+    this.cameraPitch = prev.cameraPitch;
+    this.applySkyTheme();
+    this.updateHUD();
+    this.updateMinimap(true);
+    this.showToast(this.t('🥾 Returned smoothly to the Seven-Buddha mountain trail.', '🥾 已起身回到七佛山林步道，法喜随行。'));
   }
 
   // -------------------- GRAND HALL & 7-BUDDHA HALL TABLES / MATS ARE BUILT INSIDE THEIR RESPECTIVE ARCHITECTURES --------------------
@@ -2245,15 +2460,6 @@ class BuddhistPracticeGame {
     };
     this.playerGroup.add(monkModel);
 
-    // Warm Golden Firefly Companion Sphere
-    const auraOrb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.11, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffe082, transparent: true, opacity: 0.78 })
-    );
-    auraOrb.position.set(0.75, 1.55, 0);
-    this.playerGroup.add(auraOrb);
-    this.charParts.auraOrb = auraOrb;
-
     // Meditation Lotus Aura Ring
     const meditationRing = new THREE.Mesh(
       new THREE.RingGeometry(0.9, 1.35, 28),
@@ -2572,16 +2778,16 @@ class BuddhistPracticeGame {
       }
     }
 
-    // Branch anchor positions around the Bodhi Tree canopy
+    // Wide-Canopy Branch Anchor Slots matching the sculpted ancient Bodhi Tree
     const branchSlots = [
-      { angle: -0.95, radius: 2.65, y: 3.45 },
-      { angle: -0.32, radius: 2.75, y: 3.95 },
-      { angle: 0.32, radius: 2.75, y: 3.55 },
-      { angle: 0.95, radius: 2.65, y: 4.05 },
-      { angle: 1.58, radius: 2.60, y: 3.60 },
-      { angle: 2.22, radius: 2.65, y: 4.15 },
-      { angle: 2.85, radius: 2.70, y: 3.65 },
-      { angle: -1.58, radius: 2.60, y: 4.20 }
+      { angle: -0.95, radius: 3.45, y: 3.05 },
+      { angle: -0.32, radius: 3.35, y: 4.10 },
+      { angle: 0.32, radius: 3.45, y: 3.35 },
+      { angle: 0.95, radius: 3.65, y: 3.55 },
+      { angle: 1.48, radius: 3.90, y: 3.20 },
+      { angle: 2.22, radius: 3.25, y: 4.35 },
+      { angle: -1.48, radius: 3.85, y: 2.95 },
+      { angle: -2.18, radius: 3.25, y: 4.15 }
     ];
     this._bodhiBranchSlots = branchSlots;
 
@@ -2590,7 +2796,7 @@ class BuddhistPracticeGame {
     hungWishes.forEach((wish, i) => {
       const slot = branchSlots[i % branchSlots.length];
       const bx = Math.sin(slot.angle) * slot.radius;
-      const bz = Math.cos(slot.angle) * slot.radius - 0.35;
+      const bz = Math.cos(slot.angle) * slot.radius - 0.45;
 
       const plaquePivot = new THREE.Group();
       plaquePivot.position.set(bx, slot.y, bz);
@@ -2700,21 +2906,38 @@ class BuddhistPracticeGame {
     const author = this.state.playerName || this.t('Little Lama', '小沙弥');
     const leafTex = this.createWishPlaqueTexture(chosenWish.emoji, shortTitle, author);
     const flyingLeaf = window.TempleModels3D.createBodhiWishLeafMesh(leafTex, 1.15);
-    const startPos = new THREE.Vector3(treeBase.x, treeBase.y + 1.45, treeBase.z + 2.4);
+    const startPos = new THREE.Vector3(treeBase.x, treeBase.y + 1.45, treeBase.z + 2.45);
     const endPos = new THREE.Vector3(
       treeBase.x + Math.sin(slot.angle) * slot.radius,
       treeBase.y + slot.y - 0.75,
-      treeBase.z + Math.cos(slot.angle) * slot.radius - 0.35
+      treeBase.z + Math.cos(slot.angle) * slot.radius - 0.45
     );
     flyingLeaf.position.copy(startPos);
     this.publicTempleGroup.add(flyingLeaf);
     this._flyingWishLeaf = flyingLeaf;
 
+    // Gentle luminous blessing motes trailing peacefully behind the rising wish leaf
+    this._bodhiWishMotes = [];
+    const moteGeo = new THREE.SphereGeometry(0.065, 6, 4);
+    for (let mi = 0; mi < 6; mi++) {
+      const mote = new THREE.Mesh(
+        moteGeo,
+        new THREE.MeshBasicMaterial({ color: 0xffe680, transparent: true, opacity: 0.75 })
+      );
+      mote.position.copy(startPos);
+      mote.userData = { lag: 0.05 + mi * 0.045, phase: mi * 1.15 };
+      this.publicTempleGroup.add(mote);
+      this._bodhiWishMotes.push(mote);
+    }
+
     this._bodhiQuestState = {
       age: 0,
-      duration: 6.2,
-      flightDur: 3.6,
-      treeCenter: new THREE.Vector3(treeBase.x, treeBase.y + 3.4, treeBase.z - 0.35),
+      duration: 7.8,
+      flightDur: 5.4,
+      treeCenter: new THREE.Vector3(treeBase.x, treeBase.y + 3.4, treeBase.z - 0.45),
+      camPos: new THREE.Vector3(treeBase.x + 1.15, treeBase.y + 1.95, treeBase.z + 10.6),
+      lookStart: new THREE.Vector3(treeBase.x, treeBase.y + 2.45, treeBase.z - 0.35),
+      lookEnd: new THREE.Vector3(treeBase.x, treeBase.y + 3.85, treeBase.z - 0.35),
       startPos,
       endPos,
       landed: false
@@ -2727,14 +2950,14 @@ class BuddhistPracticeGame {
     const descEl = document.getElementById('bodhi-quest-desc');
     const exitBtn = document.getElementById('btn-exit-bodhi-quest');
 
-    if (badgeEl) badgeEl.textContent = this.t('🍃 Vajrasana Bodhi Tree · Leaf Wish Quest', '🍃 金刚座菩提树祈愿 · 愿叶飞升');
+    if (badgeEl) badgeEl.textContent = this.t('🍃 Vajrasana Bodhi Tree · Quiet Blessing', '🍃 金刚座古菩提 · 静心愿叶');
     if (iconEl) iconEl.textContent = chosenWish.emoji || '🍃';
     if (titleEl) titleEl.textContent = `🍃 ${shortTitle}`;
     if (descEl) {
       const detail = this.dField(chosenWish, 'detail', 'zhDetail');
       descEl.textContent = this.t(
-        `A gentle breeze carries your Bodhi leaf wish up into the serene canopy: "${detail}"`,
-        `微风轻拂金刚座旁的菩提树，金色菩提叶载着善愿飞上树梢：“${detail}”`
+        `A tranquil breeze gently lifts your Bodhi leaf wish up into the ancient canopy: "${detail}"`,
+        `微风轻拂千年古菩提，金色愿叶缓缓飘上苍翠枝梢：“${detail}”`
       );
     }
     if (exitBtn) exitBtn.textContent = this.t('✨ Return', '✨ 完成返回');
@@ -2749,6 +2972,12 @@ class BuddhistPracticeGame {
       this._flyingWishLeaf.parent.remove(this._flyingWishLeaf);
     }
     this._flyingWishLeaf = null;
+    if (this._bodhiWishMotes && this._bodhiWishMotes.length > 0) {
+      this._bodhiWishMotes.forEach((m) => {
+        if (m && m.parent) m.parent.remove(m);
+      });
+    }
+    this._bodhiWishMotes = [];
     this._bodhiQuestState = null;
     const overlay = document.getElementById('bodhi-quest-overlay');
     if (overlay) overlay.classList.add('hidden');
@@ -5270,6 +5499,10 @@ class BuddhistPracticeGame {
       this.syncShoeVisuals();
     }
 
+    document.body.classList.remove('waterfall-mode');
+    const wfOverlay = document.getElementById('waterfall-sanctuary-overlay');
+    if (wfOverlay) wfOverlay.classList.add('hidden');
+    if (this.waterfallSanctuaryGroup) this.waterfallSanctuaryGroup.visible = targetScene === 'waterfall_sanctuary';
     this.publicTempleGroup.visible = targetScene === 'public_temple';
     if (this.changshouMapGroup) this.changshouMapGroup.visible = targetScene === 'changshou_map';
     this.personalSpaceGroup.visible = targetScene === 'personal_space';
@@ -5462,6 +5695,10 @@ class BuddhistPracticeGame {
   initControls() {
     window.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
+      if (e.code === 'Escape' && this.currentScene === 'waterfall_sanctuary') {
+        this.exitWaterfallSanctuary();
+        return;
+      }
       if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         this.walkTarget = null;
         this.isAutoCirclingStupa = false;
@@ -5562,6 +5799,8 @@ class BuddhistPracticeGame {
           this.bowToChangshouQuest();
         } else if (this._nearChangshouReturnPortal) {
           this.switchScene('public_temple');
+        } else if (this._nearWaterfallSignpost) {
+          this.enterWaterfallSanctuary();
         } else if (this._nearHallTeleportStart) {
           this.teleportToStartingPoint();
         } else if (this._nearbyWenshuSeatIdx !== null && this._nearbyWenshuSeatIdx !== undefined) {
@@ -5721,6 +5960,13 @@ class BuddhistPracticeGame {
           const rkKey = shoeRackHit.object.userData.shoeRackKey;
           if (this.state.wearingShoes) this.takeOffShoesForHall(rkKey);
           else this.putShoesBackOn();
+          return;
+        }
+        const wfSignHit = hits.find(
+          (h) => h.object.userData && h.object.userData.waterfallSignpost
+        );
+        if (wfSignHit) {
+          this.enterWaterfallSanctuary();
           return;
         }
         const lampWallHit = hits.find(
@@ -6006,6 +6252,74 @@ class BuddhistPracticeGame {
     const exitBodhiQuestBtn = document.getElementById('btn-exit-bodhi-quest');
     if (exitBodhiQuestBtn) {
       exitBodhiQuestBtn.addEventListener('click', () => this.endBodhiWishQuestView());
+    }
+
+    // Bind 「瀑布清流」 Sanctuary Overlay Controls (Music & Gentle Stream Sliders, Camera, Pure View, Replay, Exit)
+    const wfMusicSlider = document.getElementById('waterfall-music-slider');
+    if (wfMusicSlider) {
+      const updateWfMusic = () => {
+        const pct = Math.max(0, Math.min(100, parseInt(wfMusicSlider.value, 10) || 0));
+        if (window.templeAudio && typeof window.templeAudio.setWaterfallMusicVolume === 'function') {
+          window.templeAudio.setWaterfallMusicVolume(pct / 100);
+        }
+        const valEl = document.getElementById('waterfall-music-val');
+        if (valEl) valEl.textContent = `${pct}%`;
+      };
+      ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((ev) => wfMusicSlider.addEventListener(ev, (e) => e.stopPropagation()));
+      wfMusicSlider.addEventListener('input', updateWfMusic);
+      wfMusicSlider.addEventListener('change', updateWfMusic);
+    }
+    const wfStreamSlider = document.getElementById('waterfall-stream-slider');
+    if (wfStreamSlider) {
+      const updateWfStream = () => {
+        const pct = Math.max(0, Math.min(100, parseInt(wfStreamSlider.value, 10) || 0));
+        if (window.templeAudio && typeof window.templeAudio.setWaterfallStreamVolume === 'function') {
+          window.templeAudio.setWaterfallStreamVolume(pct / 100);
+        }
+        const valEl = document.getElementById('waterfall-stream-val');
+        if (valEl) valEl.textContent = `${pct}%`;
+      };
+      ['pointerdown', 'mousedown', 'touchstart', 'click'].forEach((ev) => wfStreamSlider.addEventListener(ev, (e) => e.stopPropagation()));
+      wfStreamSlider.addEventListener('input', updateWfStream);
+      wfStreamSlider.addEventListener('change', updateWfStream);
+    }
+    const wfReplayBtn = document.getElementById('btn-waterfall-replay');
+    if (wfReplayBtn) {
+      wfReplayBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._waterfallElapsed = 0;
+        this._waterfallAudioEnded = false;
+        if (window.templeAudio && typeof window.templeAudio.replayWaterfallSanctuaryAudio === 'function') {
+          window.templeAudio.replayWaterfallSanctuaryAudio();
+        }
+      });
+    }
+    const wfExitBtn = document.getElementById('btn-exit-waterfall-sanctuary');
+    if (wfExitBtn) {
+      wfExitBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.exitWaterfallSanctuary();
+      });
+    }
+    const wfCamBtn = document.getElementById('btn-waterfall-cam-view');
+    if (wfCamBtn) {
+      wfCamBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.cycleWaterfallCameraPreset();
+      });
+    }
+    const wfPureBtn = document.getElementById('btn-waterfall-hide-hud');
+    if (wfPureBtn) {
+      wfPureBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const ov = document.getElementById('waterfall-sanctuary-overlay');
+        if (ov) {
+          ov.classList.toggle('pure-hud');
+          wfPureBtn.textContent = ov.classList.contains('pure-hud')
+            ? this.t('👁️ Show Bar', '👁️ 显示控制栏')
+            : this.t('👁️ Pure 3D', '👁️ 纯净实景');
+        }
+      });
     }
 
     const skipCutsceneBtn = document.getElementById('btn-skip-cutscene');
@@ -7688,6 +8002,12 @@ class BuddhistPracticeGame {
     setText('#minimap-dir-s', 'S', '南');
     setText('#minimap-dir-w', 'W', '西');
     setText('#minimap-dir-e', 'E', '东');
+    setText('#waterfall-title-badge', '🌊 Waterfall Pure Stream · Forest Meditation', '🌊 瀑布清流 · 山林禅坐');
+    setText('#btn-waterfall-cam-view', '🎥 Camera', '🎥 视角');
+    setText('#waterfall-music-label', '🎵 Chant', '🎵 禅乐');
+    setText('#waterfall-stream-label', '🌊 Stream', '🌊 流水');
+    setText('#btn-waterfall-replay', '🔄 Replay', '🔄 重听');
+    setText('#btn-exit-waterfall-sanctuary', '🚶 Return to Trail', '🚶 起身返回山道');
     this.updateMinimap(true);
     const shareLink = document.querySelector('#right-panel a[download]');
     if (shareLink) shareLink.textContent = zh ? '📥 分享版' : '📥 Share';
@@ -8348,6 +8668,10 @@ class BuddhistPracticeGame {
   }
 
   updatePlayerMovement(dt, elapsed) {
+    if (this.currentScene === 'waterfall_sanctuary') {
+      this.applySeatedMeditationPose(elapsed, false);
+      return;
+    }
     if (this.isSeatedOnMat) {
       this.applySeatedMeditationPose(elapsed, this.isBowing25 || this.bowAnimTimer > 0 || this.poseMode === 'palms');
       if (this.isBowing25) {
@@ -9364,13 +9688,6 @@ class BuddhistPracticeGame {
       }
     });
 
-    // Rotate Spirit Companion Aura
-    if (this.charParts.auraOrb) {
-      this.charParts.auraOrb.position.x = Math.cos(elapsed * 2.2) * 0.85;
-      this.charParts.auraOrb.position.z = Math.sin(elapsed * 2.2) * 0.85;
-      this.charParts.auraOrb.position.y = 1.65 + Math.sin(elapsed * 4) * 0.12;
-    }
-
     // Update 3D Golden Exploration Compass Arrow to point toward the active Hint Landmark!
     if (this.compassArrow) {
       const targetDeed = window.GAME_DATA.GOOD_DEEDS.find(
@@ -9502,10 +9819,10 @@ class BuddhistPracticeGame {
       windClusters.forEach((cluster, idx) => {
         if (!cluster) return;
         const phase = (cluster.userData && typeof cluster.userData.windPhase === 'number') ? cluster.userData.windPhase : idx * 0.6;
-        const swayAmp = 0.085;
-        const breeze = Math.sin(elapsed * 1.45 + phase) + Math.sin(elapsed * 2.9 + phase * 1.7) * 0.35;
+        const swayAmp = 0.042;
+        const breeze = Math.sin(elapsed * 1.15 + phase) + Math.sin(elapsed * 2.1 + phase * 1.7) * 0.3;
         cluster.rotation.z = breeze * swayAmp;
-        cluster.rotation.x = Math.cos(elapsed * 1.15 + phase) * swayAmp * 0.7;
+        cluster.rotation.x = Math.cos(elapsed * 0.95 + phase) * swayAmp * 0.65;
       });
       const drifting = wud.driftingLeaves || [];
       drifting.forEach((dLeaf, idx) => {
@@ -9534,22 +9851,41 @@ class BuddhistPracticeGame {
       });
     }
 
-    // Animate Flying Bodhi Leaf Wish during the serene Wishing Tree Quest View
+    // Animate Serene Rising Bodhi Leaf Wish during Tranquil Still-Frame Quest View
     if (this._bodhiQuestState) {
       const bqs = this._bodhiQuestState;
       bqs.age += dt;
       if (this._flyingWishLeaf) {
         const u = Math.min(1, bqs.age / bqs.flightDur);
-        const ease = 1 - Math.pow(1 - u, 3);
-        const arcLift = Math.sin(u * Math.PI) * 1.35;
-        const swirl = (1 - u) * 0.9;
+        // Smooth, unhurried breath-like upward drift
+        const ease = 0.5 - 0.5 * Math.cos(u * Math.PI);
+        const arcLift = Math.sin(u * Math.PI) * 0.42;
+        const gentleSwayX = Math.sin(u * Math.PI * 1.35) * 0.50 * (1 - u * 0.4);
+        const gentleSwayZ = Math.sin(u * Math.PI) * 0.22;
         this._flyingWishLeaf.position.set(
-          THREE.MathUtils.lerp(bqs.startPos.x, bqs.endPos.x, ease) + Math.sin(u * Math.PI * 2.2) * swirl,
+          THREE.MathUtils.lerp(bqs.startPos.x, bqs.endPos.x, ease) + gentleSwayX,
           THREE.MathUtils.lerp(bqs.startPos.y, bqs.endPos.y, ease) + arcLift,
-          THREE.MathUtils.lerp(bqs.startPos.z, bqs.endPos.z, ease) + Math.cos(u * Math.PI * 2.2) * swirl * 0.7
+          THREE.MathUtils.lerp(bqs.startPos.z, bqs.endPos.z, ease) + gentleSwayZ
         );
-        this._flyingWishLeaf.rotation.y = elapsed * 2.2 * (1 - u * 0.65);
-        this._flyingWishLeaf.rotation.z = Math.sin(elapsed * 2.8) * 0.16;
+        // Keep the leaf facing peacefully forward with only a soft breeze sway (no dizzy spinning)
+        this._flyingWishLeaf.rotation.y = Math.sin(elapsed * 0.7) * 0.22;
+        this._flyingWishLeaf.rotation.z = Math.sin(elapsed * 1.1) * 0.13;
+        this._flyingWishLeaf.rotation.x = -0.15 + Math.cos(elapsed * 0.85) * 0.06;
+
+        if (this._bodhiWishMotes && this._bodhiWishMotes.length > 0) {
+          this._bodhiWishMotes.forEach((m, mi) => {
+            const mu = Math.max(0, Math.min(1, u - (m.userData.lag || 0.06)));
+            const me = 0.5 - 0.5 * Math.cos(mu * Math.PI);
+            const ph = m.userData.phase || mi;
+            m.position.set(
+              THREE.MathUtils.lerp(bqs.startPos.x, bqs.endPos.x, me) + Math.sin(elapsed * 1.4 + ph) * 0.28,
+              THREE.MathUtils.lerp(bqs.startPos.y, bqs.endPos.y, me) + Math.sin(mu * Math.PI) * 0.35 - 0.18,
+              THREE.MathUtils.lerp(bqs.startPos.z, bqs.endPos.z, me) + Math.cos(elapsed * 1.2 + ph) * 0.24
+            );
+            m.material.opacity = u < 0.92 ? 0.65 * (1 - mu * 0.25) : Math.max(0, (1 - u) * 8);
+          });
+        }
+
         if (u >= 1 && !bqs.landed) {
           bqs.landed = true;
           this._flyingWishLeaf.visible = false;
@@ -9588,6 +9924,67 @@ class BuddhistPracticeGame {
         puff.scale.set(s, s, s);
         puff.material.opacity = (1 - cycle) * 0.45;
       });
+    }
+
+    // Animate 3D 「瀑布清流」 Waterfall Sanctuary & Synchronize 1:23 Chant Progress
+    if (this.currentScene === 'waterfall_sanctuary' && this.waterfallSanctuaryModel) {
+      this._waterfallElapsed = (this._waterfallElapsed || 0) + dt;
+      const wud = this.waterfallSanctuaryModel.userData || {};
+
+      (wud.waterfallStrips || []).forEach((strip) => {
+        const tex = strip.material && strip.material.map;
+        if (tex && tex.offset) {
+          tex.offset.y = (tex.offset.y + dt * (strip.userData.scrollSpeed || 1.5)) % 1;
+        }
+      });
+      (wud.brookStrips || []).forEach((bk) => {
+        const tex = bk.material && bk.material.map;
+        if (tex && tex.offset) {
+          tex.offset.y = (tex.offset.y + dt * (bk.userData.scrollSpeed || 1.4)) % 1;
+        }
+      });
+      (wud.mistPuffs || []).forEach((puff, idx) => {
+        const ph = puff.userData.phase || idx * 0.5;
+        const cyc = (elapsed * 0.45 + ph) % 1;
+        puff.position.y = (puff.userData.baseY || 0.45) + cyc * 0.85;
+        puff.position.x = (puff.userData.baseX || 2.0) + Math.sin(elapsed * 1.1 + ph) * 0.25;
+        if (puff.material) puff.material.opacity = (1 - cyc) * 0.36;
+      });
+      (wud.poolRipples || []).forEach((ring) => {
+        const cyc = (elapsed * 0.52 + (ring.userData.phase || 0)) % 1;
+        const sc = 0.65 + cyc * 2.6;
+        ring.scale.set(sc, sc, 1);
+        if (ring.material) ring.material.opacity = (1 - cyc) * 0.44;
+      });
+      (wud.waterDrops || []).forEach((drop) => {
+        const cyc = (elapsed * (drop.userData.speed || 0.7) + (drop.userData.phase || 0)) % 1;
+        drop.position.y = 9.8 * (1 - cyc);
+        drop.position.x = (drop.userData.baseX || 2.1) + Math.sin(elapsed * 2.0 + drop.userData.phase) * 0.08;
+      });
+      (wud.lanternLights || []).forEach((pt, idx) => {
+        pt.intensity = 0.82 + Math.sin(elapsed * 4.2 + idx * 1.3) * 0.10;
+      });
+      (wud.teaSteamPuffs || []).forEach((sp, idx) => {
+        const cyc = (elapsed * (sp.userData.speed || 0.45) + (sp.userData.phase || idx * 0.2)) % 1;
+        sp.position.y = sp.userData.oy + cyc * 0.62;
+        sp.position.x = sp.userData.ox + Math.sin(elapsed * 2.2 + idx) * 0.045;
+        sp.position.z = sp.userData.oz + Math.cos(elapsed * 1.9 + idx) * 0.035;
+        const sc = 0.7 + cyc * 1.65;
+        sp.scale.set(sc, sc * 1.25, sc);
+        if (sp.material) sp.material.opacity = Math.sin(cyc * Math.PI) * 0.34;
+      });
+
+      const wfData = window.GAME_DATA.WATERFALL_SANCTUARY_DATA || { durationSec: 83, verses: [] };
+      const totalDur = wfData.durationSec || 83;
+      const audioEl = window.templeAudio && window.templeAudio._waterfallMusicAudio;
+      const curTime = audioEl && typeof audioEl.currentTime === 'number' && !audioEl.paused && audioEl.currentTime > 0
+        ? Math.min(totalDur, audioEl.currentTime)
+        : Math.min(totalDur, this._waterfallElapsed);
+
+      const timerEl = document.getElementById('waterfall-timer-text');
+      if (timerEl) timerEl.textContent = `${this.formatTimeMMSS(curTime)} / ${this.formatTimeMMSS(totalDur)}`;
+      const fillEl = document.getElementById('waterfall-progress-fill');
+      if (fillEl) fillEl.style.width = `${Math.min(100, (curTime / totalDur) * 100)}%`;
     }
   }
 
@@ -9645,14 +10042,16 @@ class BuddhistPracticeGame {
   updateCamera(dt) {
     if (this._bodhiQuestState) {
       const bqs = this._bodhiQuestState;
-      const orbitA = 0.25 + bqs.age * 0.14;
-      const desiredPos = new THREE.Vector3(
-        bqs.treeCenter.x + Math.sin(orbitA) * 9.5,
-        bqs.treeCenter.y + 1.8,
-        bqs.treeCenter.z + Math.cos(orbitA) * 9.5
-      );
-      this.camera.position.lerp(desiredPos, Math.min(1, dt * 3.8));
-      this.camera.lookAt(bqs.treeCenter);
+      const u = Math.min(1, bqs.age / (bqs.flightDur || 5.4));
+      const calmEase = 0.5 - 0.5 * Math.cos(u * Math.PI);
+      const desiredPos = bqs.camPos
+        ? new THREE.Vector3(bqs.camPos.x, bqs.camPos.y + calmEase * 0.35, bqs.camPos.z)
+        : new THREE.Vector3(bqs.treeCenter.x + 1.15, bqs.treeCenter.y - 1.35, bqs.treeCenter.z + 10.6);
+      const lookPos = (bqs.lookStart && bqs.lookEnd)
+        ? new THREE.Vector3().lerpVectors(bqs.lookStart, bqs.lookEnd, calmEase)
+        : bqs.treeCenter;
+      this.camera.position.lerp(desiredPos, Math.min(1, dt * 2.8));
+      this.camera.lookAt(lookPos);
       return;
     }
 
@@ -9669,6 +10068,35 @@ class BuddhistPracticeGame {
       this.camera.lookAt(cs.targetPos);
       if (cs.age >= cs.duration) {
         this.endCutscene(true);
+      }
+      return;
+    }
+
+    if (this.currentScene === 'waterfall_sanctuary') {
+      const presets = [
+        { pos: new THREE.Vector3(0.75, 2.38, 9.75), look: new THREE.Vector3(-0.35, 2.30, -2.5) },
+        { pos: new THREE.Vector3(-2.35, 1.55, 6.95), look: new THREE.Vector3(0.45, 2.15, -3.2) },
+        { pos: new THREE.Vector3(-3.05, 2.35, 3.85), look: new THREE.Vector3(1.6, 2.6, -4.5) }
+      ];
+      const pr = presets[(this._waterfallCamPreset || 0) % presets.length];
+      const yawOffset = Math.max(-0.85, Math.min(0.85, this.cameraAngle || 0));
+      const pitchOffset = (this.cameraPitch - 0.25) * 1.5;
+      const desiredPos = new THREE.Vector3(
+        pr.pos.x + Math.sin(yawOffset) * 1.1,
+        Math.max(0.95, pr.pos.y + pitchOffset * 0.7),
+        pr.pos.z
+      );
+      const lookPos = new THREE.Vector3(
+        pr.look.x - Math.sin(yawOffset) * 2.4,
+        pr.look.y - pitchOffset * 1.2,
+        pr.look.z
+      );
+      this.camera.position.lerp(desiredPos, Math.min(1, dt * 3.8));
+      this.camera.lookAt(lookPos);
+      if (this.dirLight) {
+        this.dirLight.position.set(12, 24, 14);
+        this.dirLight.target.position.set(0, 1, -2);
+        this.dirLight.target.updateMatrixWorld();
       }
       return;
     }
@@ -9931,6 +10359,7 @@ class BuddhistPracticeGame {
       this._nearLampWallSide = null;
       this._nearChangshouReturnPortal = false;
       this._nearbyQifoPondId = null;
+      this._nearWaterfallSignpost = null;
       this._lastSpokenPromptId = null;
       return;
     }
@@ -9948,6 +10377,7 @@ class BuddhistPracticeGame {
     this._nearbyThreeBuddhaIdx = null;
     this._nearChangshouReturnPortal = false;
     this._nearbyQifoPondId = null;
+    this._nearWaterfallSignpost = null;
     document.body.classList.toggle('in-sacred-hall', insideAnyHall);
     if (insideAnyHall && !this._wasInsideAnyHall && isMobile) {
       const sp = document.getElementById('side-panel');
@@ -10716,6 +11146,34 @@ class BuddhistPracticeGame {
             </div>
           `;
           return;
+        }
+      }
+
+      // Signposts along West Trail & Circled Forest Grove for 「瀑布清流」
+      const wfData = window.GAME_DATA.WATERFALL_SANCTUARY_DATA;
+      if (wfData && !this.isSeatedOnMat) {
+        const wfSpots = [wfData.grovePos, wfData.junctionPos];
+        for (const ws of wfSpots) {
+          if (ws && Math.hypot(pPos.x - ws.x, pPos.z - ws.z) < 4.8) {
+            this._nearWaterfallSignpost = ws;
+            promptEl.style.display = 'flex';
+            promptEl.innerHTML = `
+              <div class="quest-box-1" style="padding:10px 14px;">
+                <div class="talk-portrait-col"><div class="talk-avatar-frame">🌊</div><div class="talk-speaker-badge">${this.t('Forest Signpost', '山林路标')}</div></div>
+                <div class="talk-bubble-body">
+                  <div class="box-tag"><span>🌊 ${this.t('Waterfall Pure Stream', '瀑布清流')}</span><span>${this.state.waterfallMeditated ? this.t('✨ Serene Sanctuary', '✨ 净心禅境') : this.t('+10 VP', '+10 功德')}</span></div>
+                  <div class="box-title">${this.t('Enter the misty waterfall canyon beside the tea pavilion to sit calmly and listen (1:23).', '点击或按 [E] 步入「瀑布清流」禅亭茶台旁静坐，聆听 1 分 23 秒澄澈梵音与清流。')}</div>
+                </div>
+              </div>
+              <div class="quest-box-2">
+                <button class="quest-enter-btn" onclick="window.game.enterWaterfallSanctuary()">
+                  <span>${this.t('🌊 Enter Waterfall Sanctuary', '🌊 进入瀑布清流')}</span>
+                  <span class="enter-key-badge">⏎ E</span>
+                </button>
+              </div>
+            `;
+            return;
+          }
         }
       }
 

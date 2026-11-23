@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>水月图</title>
-  <link rel="stylesheet" href="css/style.css?v=20261120" />
+  <link rel="stylesheet" href="css/style.css?v=20261126" />
   <!-- Three.js 3D Engine & GLTFLoader for Custom 3D Models -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -42,7 +42,7 @@
     <!-- Left Card: Avatar + Virtue & Liberation Points -->
     <div class="hud-card" id="top-points-card">
       <div class="player-badge">
-        <div class="avatar-circle" id="hud-avatar" style="overflow:hidden; padding:0;"><img src="assets/little_monk_avatar.jpg" alt="Little Monk" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>
+        <div class="avatar-circle" id="hud-avatar" style="overflow:hidden; padding:0;"><img src="assets/little_monk_avatar.jpg?v=20261126" alt="Little Monk" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" /></div>
         <div class="player-meta">
           <h3 id="hud-player-name">Little Lama</h3>
           <p id="hud-char-title">🌱 Novice Traveler</p>
@@ -589,10 +589,47 @@
     </div>
   </div>
 
+  <!-- 3D WATERFALL SANCTUARY OVERLAY (「瀑布清流」 山林静坐冥想) -->
+  <div id="waterfall-sanctuary-overlay" class="hidden" aria-live="polite">
+    <div class="waterfall-top-bar">
+      <div class="waterfall-title-badge" id="waterfall-title-badge">🌊 瀑布清流 · 山林禅坐</div>
+      <div class="waterfall-top-actions">
+        <button class="hud-btn" id="btn-waterfall-cam-view" title="切换禅修视角 / Switch View">🎥 视角</button>
+        <button class="hud-btn" id="btn-waterfall-hide-hud" title="隐藏文字栏 / Pure 3D View">👁️ 纯净实景</button>
+      </div>
+    </div>
+    <div class="waterfall-bottom-bar" id="waterfall-bottom-bar">
+      <div class="waterfall-verse-row">
+        <div class="waterfall-progress-track">
+          <div id="waterfall-progress-fill"></div>
+        </div>
+        <span id="waterfall-timer-text">0:00 / 1:23</span>
+      </div>
+      <div class="waterfall-controls-row">
+        <div class="waterfall-sliders">
+          <label class="waterfall-slider-pill" title="调节禅乐音量 / Chant Volume">
+            <span id="waterfall-music-label">🎵 禅乐</span>
+            <input type="range" id="waterfall-music-slider" min="0" max="100" value="85" />
+            <span id="waterfall-music-val">85%</span>
+          </label>
+          <label class="waterfall-slider-pill" title="轻柔调节瀑布清流声 / Stream Volume">
+            <span id="waterfall-stream-label">🌊 流水</span>
+            <input type="range" id="waterfall-stream-slider" min="0" max="100" value="38" />
+            <span id="waterfall-stream-val">38%</span>
+          </label>
+        </div>
+        <div class="waterfall-btn-group">
+          <button class="hud-btn" id="btn-waterfall-replay">🔄 重听</button>
+          <button class="primary-gold-btn" id="btn-exit-waterfall-sanctuary">🚶 起身返回山道</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Game Scripts -->
-  <script src="js/data.js?v=20261120"></script>
-  <script src="js/audio.js?v=20261120"></script>
-  <script src="js/models3d.js?v=20261120"></script>
-  <script src="js/game.js?v=20261120"></script>
+  <script src="js/data.js?v=20261126"></script>
+  <script src="js/audio.js?v=20261126"></script>
+  <script src="js/models3d.js?v=20261126"></script>
+  <script src="js/game.js?v=20261126"></script>
 </body>
 </html>

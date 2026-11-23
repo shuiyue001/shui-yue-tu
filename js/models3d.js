@@ -136,34 +136,529 @@ window.TempleModels3D = {
     canvas.height = 512;
     const ctx = canvas.getContext('2d');
 
-    // Soft earthy base so vertex colors blend smoothly like natural soil + moss
-    ctx.fillStyle = '#dde0d2';
+    // Warm sunlit Ghibli meadow grass canvas base so vertex colors sing naturally
+    ctx.fillStyle = '#ddeab8';
     ctx.fillRect(0, 0, 512, 512);
 
-    // Subtle organic mottled soil, moss & leaf-litter patches (Sansa-style realistic matte ground)
-    for (let i = 0; i < 650; i++) {
+    // Soft organic meadow light-and-shadow patches (match Image 2 sunlit hills)
+    for (let i = 0; i < 480; i++) {
       const x = (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * 512;
       const y = (Math.sin(i * 78.233) * 29831.137 % 1 + 1) % 1 * 512;
-      const r = 6 + (i % 18);
-      const tone = i % 3 === 0 ? 'rgba(130, 145, 110, 0.14)' : (i % 3 === 1 ? 'rgba(175, 160, 128, 0.14)' : 'rgba(242, 240, 228, 0.10)');
+      const r = 10 + (i % 22);
+      const tone = i % 3 === 0 ? 'rgba(130, 178, 72, 0.16)' : (i % 3 === 1 ? 'rgba(182, 214, 108, 0.16)' : 'rgba(92, 142, 54, 0.12)');
       ctx.fillStyle = tone;
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.ellipse(x, y, r * 1.4, r * 0.75, 0.25, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Fine natural pebble & fallen blade speckles
-    for (let i = 0; i < 1800; i++) {
+    // Delicate painted directional grass blade strokes & tiny daisy dots
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 1600; i++) {
       const x = (Math.abs(Math.sin(i * 3.17)) * 512) % 512;
       const y = (Math.abs(Math.cos(i * 5.43)) * 512) % 512;
-      ctx.fillStyle = i % 4 === 0 ? 'rgba(95, 108, 78, 0.22)' : 'rgba(155, 138, 108, 0.18)';
-      ctx.fillRect(x, y, 2, 2);
+      ctx.strokeStyle = i % 3 === 0 ? 'rgba(84, 134, 48, 0.26)' : (i % 3 === 1 ? 'rgba(154, 198, 78, 0.24)' : 'rgba(214, 232, 146, 0.22)');
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.sin(i) * 3, y - 7 - (i % 5));
+      ctx.stroke();
     }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(34, 34);
+    tex.repeat.set(36, 36);
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
     this._groundTex = tex;
+    return tex;
+  },
+
+  createMeadowGrassAndFlowerTexture(variant = 0) {
+    this._meadowTuftTexCache = this._meadowTuftTexCache || {};
+    if (this._meadowTuftTexCache[variant]) return this._meadowTuftTexCache[variant];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 256);
+
+    let s = 314159 + variant * 7919;
+    const rand = () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+
+    // Painterly curved Ghibli grass blades rising from bottom baseline (y=256)
+    const bladeCount = 44;
+    for (let i = 0; i < bladeCount; i++) {
+      const bx = 26 + rand() * 204;
+      const bh = 88 + rand() * 126;
+      const lean = (bx - 128) * 0.36 + (rand() - 0.5) * 44;
+      const bw = 4.2 + rand() * 4.5;
+      const tipY = Math.max(18, 256 - bh);
+
+      const grad = ctx.createLinearGradient(bx, 256, bx + lean, tipY);
+      const tone = rand();
+      grad.addColorStop(0, '#2a5a19');
+      grad.addColorStop(0.55, tone < 0.5 ? '#4e8a2c' : '#5e9b34');
+      grad.addColorStop(1, tone < 0.35 ? '#96cc50' : '#7cb43e');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(bx - bw * 0.5, 256);
+      ctx.quadraticCurveTo(bx + lean * 0.42 - bw * 0.25, 256 - bh * 0.52, bx + lean, tipY);
+      ctx.quadraticCurveTo(bx + lean * 0.42 + bw * 0.32, 256 - bh * 0.48, bx + bw * 0.5, 256);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    const drawDaisy = (fx, fy, r, petalCol, centerCol, count = 8) => {
+      ctx.save();
+      ctx.translate(fx, fy);
+      for (let p = 0; p < count; p++) {
+        const ang = (p / count) * Math.PI * 2;
+        ctx.fillStyle = petalCol;
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(ang) * r * 0.72, Math.sin(ang) * r * 0.72, r * 0.52, r * 0.26, ang, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = centerCol;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.36, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#d97706';
+      ctx.beginPath();
+      ctx.arc(r * 0.08, r * 0.08, r * 0.16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const drawStemAndFlower = (sx, topY, r, petalCol, centerCol, petals) => {
+      const lean = (sx - 128) * 0.25 + (rand() - 0.5) * 20;
+      ctx.strokeStyle = '#3f7623';
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(sx, 254);
+      ctx.quadraticCurveTo(sx + lean * 0.4, (254 + topY) * 0.5, sx + lean, topY);
+      ctx.stroke();
+      drawDaisy(sx + lean, topY, r, petalCol, centerCol, petals);
+    };
+
+    if (variant === 1) {
+      // White daisies + bright yellow buttercups matching foreground/midground meadow in Image 2
+      drawStemAndFlower(64, 82, 17, '#ffffff', '#facc15', 8);
+      drawStemAndFlower(132, 56, 19, '#fffef7', '#f59e0b', 8);
+      drawStemAndFlower(194, 88, 16, '#ffffff', '#facc15', 8);
+      drawStemAndFlower(96, 114, 14, '#fde047', '#d97706', 6);
+      drawStemAndFlower(168, 118, 13, '#facc15', '#b45309', 6);
+    } else if (variant === 2) {
+      // Soft lavender blooms + white daisies + golden yellow wildflowers
+      drawStemAndFlower(58, 92, 15, '#c4b5fd', '#7e22ce', 7);
+      drawStemAndFlower(114, 62, 18, '#ffffff', '#facc15', 8);
+      drawStemAndFlower(168, 76, 15, '#d8b4fe', '#9333ea', 7);
+      drawStemAndFlower(206, 108, 13, '#fde047', '#ca8a04', 6);
+      drawStemAndFlower(82, 126, 13, '#facc15', '#b45309', 6);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    this._meadowTuftTexCache[variant] = tex;
+    return tex;
+  },
+
+  createBlossomDiscTexture(kind = 'daisy') {
+    this._blossomDiscCache = this._blossomDiscCache || {};
+    if (this._blossomDiscCache[kind]) return this._blossomDiscCache[kind];
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.translate(64, 64);
+
+    if (kind === 'daisy') {
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2;
+        ctx.fillStyle = '#e2e8d8';
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(ang) * 32, Math.sin(ang) * 32, 24, 12.5, ang, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(ang) * 31, Math.sin(ang) * 31 - 1.5, 22, 11, ang, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(0, 0, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fde047';
+      ctx.beginPath();
+      ctx.arc(-2, -2, 11, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (kind === 'buttercup') {
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2;
+        ctx.fillStyle = '#eab308';
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(ang) * 28, Math.sin(ang) * 28, 22, 16, ang, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(ang) * 27, Math.sin(ang) * 27 - 1.5, 19, 13, ang, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#b45309';
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      for (let i = 0; i < 10; i++) {
+        const ang = (i / 10) * Math.PI * 2;
+        const r = 20 + (i % 2) * 10;
+        ctx.fillStyle = i % 2 === 0 ? '#c084fc' : '#d8b4fe';
+        ctx.beginPath();
+        ctx.ellipse(Math.cos(ang) * r, Math.sin(ang) * r, 16, 10, ang, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#7e22ce';
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    this._blossomDiscCache[kind] = tex;
+    return tex;
+  },
+
+  createCrossedMeadowTuftGeometry(width = 1.25, height = 0.85) {
+    const half = width * 0.5;
+    const flare = width * 0.60;
+    const verts = [];
+    const uvs = [];
+    const indices = [];
+    [0, Math.PI / 3, (Math.PI * 2) / 3].forEach((ang, pIdx) => {
+      const c = Math.cos(ang);
+      const s = Math.sin(ang);
+      const base = pIdx * 4;
+      verts.push(
+        -half * c, 0, -half * s,
+        half * c, 0, half * s,
+        flare * c, height, flare * s,
+        -flare * c, height, -flare * s
+      );
+      uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  },
+
+  populateMeadowGrassAndFlowers(targetGroup, spots) {
+    if (!spots || !spots.length) return;
+    const tuftGeo = this.createCrossedMeadowTuftGeometry(1.38, 0.92);
+    const tuftBuckets = [[], [], []];
+    const flowerBuckets = { daisy: [], buttercup: [], lavender: [] };
+
+    spots.forEach((sp, idx) => {
+      const hash = Math.abs(Math.sin(sp.x * 12.9898 + sp.z * 78.233) * 43758.5453) % 1;
+      const bucket = hash < 0.42 ? 0 : (hash < 0.78 ? 1 : 2);
+      tuftBuckets[bucket].push(sp);
+      if (bucket === 1) {
+        flowerBuckets.daisy.push({ x: sp.x + (hash - 0.5) * 0.45, y: sp.y + 0.46 * sp.scale, z: sp.z + 0.15, scale: sp.scale });
+        if (idx % 2 === 0) {
+          flowerBuckets.buttercup.push({ x: sp.x - 0.28, y: sp.y + 0.42 * sp.scale, z: sp.z - 0.18, scale: sp.scale * 0.92 });
+        }
+      } else if (bucket === 2) {
+        flowerBuckets.lavender.push({ x: sp.x + 0.18, y: sp.y + 0.48 * sp.scale, z: sp.z - 0.14, scale: sp.scale });
+        if (idx % 3 !== 0) {
+          flowerBuckets.daisy.push({ x: sp.x - 0.24, y: sp.y + 0.40 * sp.scale, z: sp.z + 0.22, scale: sp.scale * 0.88 });
+        }
+      }
+    });
+
+    const dummy = new THREE.Object3D();
+    tuftBuckets.forEach((list, vIdx) => {
+      if (!list.length) return;
+      const mat = new THREE.MeshStandardMaterial({
+        map: this.createMeadowGrassAndFlowerTexture(vIdx),
+        alphaTest: 0.24,
+        transparent: false,
+        roughness: 0.92,
+        side: THREE.DoubleSide
+      });
+      const inst = new THREE.InstancedMesh(tuftGeo, mat, list.length);
+      list.forEach((sp, idx) => {
+        dummy.position.set(sp.x, sp.y - 0.04, sp.z);
+        dummy.rotation.set(0, sp.rotY || ((sp.x + sp.z) * 0.7), 0);
+        dummy.scale.set(sp.scale, sp.scale, sp.scale);
+        dummy.updateMatrix();
+        inst.setMatrixAt(idx, dummy.matrix);
+      });
+      targetGroup.add(inst);
+    });
+
+    // Crisp upward-facing 3D daisy, buttercup & lavender flower heads dotted over the green meadow (Image 2)
+    const headGeo = new THREE.CircleGeometry(0.22, 12);
+    headGeo.rotateX(-Math.PI / 2);
+    ['daisy', 'buttercup', 'lavender'].forEach((kind) => {
+      const fList = flowerBuckets[kind];
+      if (!fList.length) return;
+      const fMat = new THREE.MeshStandardMaterial({
+        map: this.createBlossomDiscTexture(kind),
+        alphaTest: 0.25,
+        roughness: 0.75,
+        side: THREE.DoubleSide
+      });
+      const fInst = new THREE.InstancedMesh(headGeo, fMat, fList.length);
+      fList.forEach((fp, idx) => {
+        dummy.position.set(fp.x, fp.y, fp.z);
+        dummy.rotation.set(Math.sin(fp.x) * 0.16, fp.x * 1.3 + fp.z, Math.cos(fp.z) * 0.14);
+        dummy.scale.set(fp.scale, fp.scale, fp.scale);
+        dummy.updateMatrix();
+        fInst.setMatrixAt(idx, dummy.matrix);
+      });
+      targetGroup.add(fInst);
+    });
+  },
+
+  createSculptedMeadowStone(rx = 1.6, ry = 0.85, rz = 1.3, seed = 1) {
+    const geo = new THREE.SphereGeometry(1.0, 22, 16);
+    const posAttr = geo.attributes && geo.attributes.position;
+    if (posAttr && posAttr.count > 4) {
+      const count = posAttr.count;
+      const colors = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const vx = posAttr.getX(i);
+        const vy = posAttr.getY(i);
+        const vz = posAttr.getZ(i);
+        const n = Math.sin(vx * 2.5 + seed) * Math.cos(vz * 2.3 + seed * 1.7) * 0.14 +
+                  Math.cos(vy * 3.8 + vx * 2.1) * 0.08;
+        const dx = vx * (1 + n);
+        let dy = vy * (1 + n * 0.7);
+        if (dy > 0.22) dy = 0.22 + (dy - 0.22) * 0.55;
+        if (dy < -0.3) dy = -0.3;
+        const dz = vz * (1 + n);
+        posAttr.setXYZ(i, dx, dy, dz);
+
+        const shade = Math.max(0.28, Math.min(0.58, 0.36 + dy * 0.16 + n * 0.25));
+        colors[i * 3] = shade * 0.98;
+        colors[i * 3 + 1] = shade * 0.96;
+        colors[i * 3 + 2] = shade * 0.92;
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      geo.computeVertexNormals();
+    }
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.90, metalness: 0.02 })
+    );
+    mesh.scale.set(rx, ry, rz);
+    mesh.receiveShadow = true;
+    return mesh;
+  },
+
+  createRollingGhibliMountain(rx, ry, rz, seed = 1, style = 'green_ridge') {
+    const geo = new THREE.SphereGeometry(1.0, 28, 18);
+    const posAttr = geo.attributes && geo.attributes.position;
+    if (posAttr && posAttr.count > 4) {
+      const count = posAttr.count;
+      for (let i = 0; i < count; i++) {
+        const vx = posAttr.getX(i);
+        const vy = posAttr.getY(i);
+        const vz = posAttr.getZ(i);
+
+        // Soft undulating Ghibli ridge spine & natural gullies (never rigid triangles/cones)
+        const ridgeWave = Math.sin(vx * 2.3 + seed * 1.4) * 0.16 + Math.cos(vz * 2.1 + seed * 2.3) * 0.12;
+        const gully = style === 'alpine_peak'
+          ? Math.abs(Math.sin(vx * 5.2 + seed)) * 0.09
+          : Math.sin(vx * 4.1 - vz * 2.6 + seed) * 0.05;
+        let dx = vx * (1.0 + Math.sin(vz * 2.0 + seed) * 0.12);
+        let dz = vz * (1.0 + Math.cos(vx * 2.0 + seed) * 0.12);
+        let dy = vy < 0 ? vy * 0.08 : (vy + ridgeWave * vy - gully * vy);
+        if (style === 'alpine_peak' && vy > 0) {
+          const ridgeCrest = Math.max(0, 1 - Math.abs(vx + Math.sin(vz * 1.8) * 0.2) * 1.15);
+          dy = dy * 0.85 + ridgeCrest * vy * 0.42;
+        }
+        posAttr.setXYZ(i, dx, Math.max(-0.04, dy), dz);
+      }
+      geo.computeVertexNormals();
+
+      const normAttr = geo.attributes && geo.attributes.normal;
+      const colors = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        const px = posAttr.getX(i);
+        const py = Math.max(0, posAttr.getY(i));
+        const ny = normAttr ? Math.max(0, normAttr.getY(i)) : 0.6;
+        const nx = normAttr ? normAttr.getX(i) : 0;
+        const sunSide = Math.max(0, Math.min(1, 0.5 + nx * 0.35 + ny * 0.3));
+        let r = 0.20, g = 0.42, b = 0.20;
+
+        if (style === 'alpine_peak') {
+          const rockR = 0.14 + sunSide * 0.12;
+          const rockG = 0.25 + sunSide * 0.15;
+          const rockB = 0.40 + sunSide * 0.18;
+          const snowMask = Math.max(0, Math.min(1, (py - 0.72 + ny * 0.14 + Math.sin(px * 6 + seed) * 0.06) / 0.16));
+          r = rockR * (1 - snowMask) + 0.94 * snowMask;
+          g = rockG * (1 - snowMask) + 0.97 * snowMask;
+          b = rockB * (1 - snowMask) + 1.0 * snowMask;
+        } else if (style === 'thangka_ridge') {
+          const mistT = Math.max(0, Math.min(1, py * 0.85));
+          const sunBoost = sunSide * 0.08;
+          r = (0.11 + sunBoost) * (1 - mistT) + (0.30 + sunBoost) * mistT;
+          g = (0.28 + sunBoost) * (1 - mistT) + (0.48 + sunBoost) * mistT;
+          b = (0.26 + sunBoost) * (1 - mistT) + (0.44 + sunBoost) * mistT;
+        } else {
+          // Layered Ghibli sunlit green & deep forest green hills matching Image 2
+          const crestT = Math.max(0, Math.min(1, py * 0.95));
+          const midBand = Math.sin(crestT * Math.PI);
+          r = 0.09 * (1 - crestT) + 0.30 * crestT + midBand * 0.03 + sunSide * 0.04;
+          g = 0.24 * (1 - crestT) + 0.50 * crestT + midBand * 0.05 + sunSide * 0.05;
+          b = 0.11 * (1 - crestT) + 0.19 * crestT + sunSide * 0.02;
+        }
+        colors[i * 3] = Math.min(1, r);
+        colors[i * 3 + 1] = Math.min(1, g);
+        colors[i * 3 + 2] = Math.min(1, b);
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    }
+
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0.0, fog: false })
+    );
+    mesh.scale.set(rx, ry, rz);
+    return mesh;
+  },
+
+  createGhibliCloudCluster(scale = 1.0, seed = 0) {
+    const grp = new THREE.Group();
+    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.96, fog: false, toneMapped: false });
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0xe6effa, transparent: true, opacity: 0.94, fog: false, toneMapped: false });
+    const puffs = [
+      [0, 1.4, 0, 4.8, 3.6, 3.2],
+      [-4.2, 0.2, 0.4, 4.0, 2.8, 2.9],
+      [4.4, 0.4, -0.3, 4.2, 3.0, 3.0],
+      [-1.8, 3.2, -0.2, 3.4, 2.9, 2.6],
+      [2.1, 2.9, 0.2, 3.2, 2.7, 2.5],
+      [0.2, 4.6, 0, 2.5, 2.1, 2.2]
+    ];
+    puffs.forEach(([px, py, pz, sx, sy, sz], idx) => {
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 12), idx === 1 || idx === 2 ? shadowMat : cloudMat);
+      p.scale.set(sx, sy, sz);
+      p.position.set(px + Math.sin(seed + idx) * 0.5, py, pz);
+      grp.add(p);
+    });
+    grp.scale.set(scale, scale, scale);
+    return grp;
+  },
+
+  createBodhiBarkTexture() {
+    if (this._bodhiBarkTex) return this._bodhiBarkTex;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#7e623f';
+    ctx.fillRect(0, 0, 256, 256);
+
+    for (let i = 0; i < 160; i++) {
+      const x = (i * 19 + Math.sin(i * 1.7) * 16 + 256) % 256;
+      const w = 2 + (i % 4);
+      ctx.fillStyle = i % 3 === 0 ? 'rgba(68, 48, 28, 0.42)' : i % 3 === 1 ? 'rgba(164, 132, 86, 0.36)' : 'rgba(116, 92, 54, 0.34)';
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.bezierCurveTo(x + Math.sin(i) * 8, 85, x - Math.cos(i) * 8, 170, x + ((i % 5) - 2) * 3, 256);
+      ctx.lineWidth = w;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.stroke();
+    }
+    for (let m = 0; m < 45; m++) {
+      const mx = (Math.abs(Math.sin(m * 7.3)) * 256) % 256;
+      const my = (Math.abs(Math.cos(m * 4.1)) * 256) % 256;
+      ctx.fillStyle = 'rgba(72, 108, 56, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 4 + (m % 5), 10 + (m % 8), 0.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 3);
+    this._bodhiBarkTex = tex;
+    return tex;
+  },
+
+  createBodhiLeafSprigTexture(variant = 0) {
+    this._bodhiSprigTexs = this._bodhiSprigTexs || {};
+    if (this._bodhiSprigTexs[variant]) return this._bodhiSprigTexs[variant];
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 256);
+
+    // Subtle woody twig stem
+    ctx.strokeStyle = '#6c5234';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(128, 242);
+    ctx.quadraticCurveTo(124, 155, 130, 58);
+    ctx.stroke();
+
+    const palettes = [
+      ['#1f5c2e', '#2f7e3c', '#4ca64a'],
+      ['#266c35', '#3d9346', '#67bd52'],
+      ['#327a39', '#53a548', '#8ad056']
+    ];
+    const pal = palettes[variant % palettes.length];
+
+    // Draw 11 overlapping pointed heart-shaped Bodhi leaves along the sprig
+    const leaves = [
+      [128, 52, 0.0, 40],
+      [96, 86, -0.65, 36], [160, 84, 0.62, 36],
+      [78, 128, -0.95, 38], [178, 126, 0.92, 38],
+      [126, 108, 0.12, 35],
+      [88, 168, -1.08, 36], [168, 168, 1.05, 36],
+      [128, 152, -0.15, 34],
+      [104, 206, -0.82, 30], [152, 206, 0.82, 30]
+    ];
+    leaves.forEach(([lx, ly, ang, sz], idx) => {
+      ctx.save();
+      ctx.translate(lx, ly);
+      ctx.rotate(ang);
+      const col = pal[(idx + variant) % pal.length];
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(0, sz * 0.42);
+      ctx.bezierCurveTo(-sz * 0.72, sz * 0.36, -sz * 0.72, -sz * 0.25, -sz * 0.22, -sz * 0.56);
+      ctx.bezierCurveTo(-sz * 0.06, -sz * 0.74, 0, -sz * 0.95, 0, -sz * 1.12);
+      ctx.bezierCurveTo(0, -sz * 0.95, sz * 0.06, -sz * 0.74, sz * 0.22, -sz * 0.56);
+      ctx.bezierCurveTo(sz * 0.72, -sz * 0.25, sz * 0.72, sz * 0.36, 0, sz * 0.42);
+      ctx.closePath();
+      ctx.fill();
+
+      // Delicate midrib & sunlit highlight on upper half
+      ctx.strokeStyle = 'rgba(205, 238, 142, 0.45)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, sz * 0.34);
+      ctx.lineTo(0, -sz * 0.92);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    const tex = new THREE.CanvasTexture(canvas);
+    this._bodhiSprigTexs[variant] = tex;
     return tex;
   },
 
@@ -1324,30 +1819,48 @@ window.TempleModels3D = {
         break;
       }
 
-      // 9. MAKE GOOD WISHES TO FRIENDS: Vajrasana Sacred Bodhi Tree (金刚座旁的菩提树) with Wind-Swaying 3D Leaves
+      // 9. MAKE GOOD WISHES TO FRIENDS: Ancient Sculpted Sacred Bodhi Tree (苍劲盘根古菩提树) atop Vajrasana Terrace
       case 'good_wishes': {
-        const sandstoneMat = new THREE.MeshStandardMaterial({ color: 0xe7d6b4, roughness: 0.72 });
+        const sandstoneMat = new THREE.MeshStandardMaterial({ color: 0xe7d6b4, roughness: 0.75 });
         const carvedGoldMat = new THREE.MeshStandardMaterial({ color: 0xd99b26, metalness: 0.55, roughness: 0.35 });
-        const barkMat = new THREE.MeshStandardMaterial({ color: 0x5c3d28, roughness: 0.92 });
-        const mossMat = new THREE.MeshStandardMaterial({ color: 0x3f7d4c, roughness: 0.88 });
+        const barkTex = this.createBodhiBarkTexture();
+        const barkMat = new THREE.MeshStandardMaterial({ map: barkTex, color: 0xc29e6c, roughness: 0.88 });
+        const rootMat = new THREE.MeshStandardMaterial({ map: barkTex, color: 0xc9a975, roughness: 0.84 });
+        const soilMat = new THREE.MeshStandardMaterial({ color: 0x4b3826, roughness: 0.96 });
+        const mossMat = new THREE.MeshStandardMaterial({ color: 0x3b3022, roughness: 0.95 });
         const lampGlowMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
 
-        // Multi-tiered Vajrasana (金刚座 / Diamond Throne) Stone Terrace
-        const lowerPlinth = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 4.5, 0.42, 24), sandstoneMat);
+        // Multi-tiered Vajrasana (金刚座 / Diamond Throne) Stone Terrace & Rich Dark Earth Root Mound
+        const lowerPlinth = new THREE.Mesh(new THREE.CylinderGeometry(4.65, 5.05, 0.42, 28), sandstoneMat);
         lowerPlinth.position.y = 0.21;
         lowerPlinth.receiveShadow = true;
-        const innerRing = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.26, 24), mossMat);
-        innerRing.position.y = 0.48;
-        const vajrasanaSeat = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.52, 1.45), sandstoneMat);
-        vajrasanaSeat.position.set(0, 0.68, 1.55);
-        const vajrasanaTrim = new THREE.Mesh(new THREE.BoxGeometry(2.42, 0.14, 1.58), carvedGoldMat);
-        vajrasanaTrim.position.set(0, 0.92, 1.55);
-        const dharmaDisc = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.045, 8, 20), carvedGoldMat);
-        dharmaDisc.position.set(0, 0.68, 2.30);
-        root.add(lowerPlinth, innerRing, vajrasanaSeat, vajrasanaTrim, dharmaDisc);
+        const innerRing = new THREE.Mesh(new THREE.CylinderGeometry(3.85, 4.15, 0.22, 28), soilMat);
+        innerRing.position.set(0, 0.47, -0.2);
+        const rootMound = new THREE.Mesh(new THREE.SphereGeometry(3.55, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), mossMat);
+        rootMound.scale.set(1.04, 0.13, 0.96);
+        rootMound.position.set(0, 0.46, -0.35);
+        rootMound.receiveShadow = true;
 
-        // 4 Serene Golden Butter Lamps around the Vajrasana Terrace
-        [[-2.5, 2.3], [2.5, 2.3], [-2.7, -1.8], [2.7, -1.8]].forEach(([lx, lz]) => {
+        // Subtle dark moss tufts hugging base of earth mound
+        const turfMat = new THREE.MeshStandardMaterial({ color: 0x2f5229, roughness: 0.92 });
+        for (let m = 0; m < 10; m++) {
+          const ma = (m / 10) * Math.PI * 2 + 0.3;
+          const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.62, 8, 6), turfMat);
+          tuft.scale.set(1.4, 0.22, 1.1);
+          tuft.position.set(Math.cos(ma) * 2.1, 0.55, -0.35 + Math.sin(ma) * 1.9);
+          root.add(tuft);
+        }
+
+        const vajrasanaSeat = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.52, 1.45), sandstoneMat);
+        vajrasanaSeat.position.set(0, 0.68, 2.55);
+        const vajrasanaTrim = new THREE.Mesh(new THREE.BoxGeometry(2.48, 0.14, 1.58), carvedGoldMat);
+        vajrasanaTrim.position.set(0, 0.92, 2.55);
+        const dharmaDisc = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.045, 8, 20), carvedGoldMat);
+        dharmaDisc.position.set(0, 0.68, 3.30);
+        root.add(lowerPlinth, innerRing, rootMound, vajrasanaSeat, vajrasanaTrim, dharmaDisc);
+
+        // 4 Serene Golden Butter Lamps Framing the Vajrasana Altar
+        [[-2.5, 3.05], [2.5, 3.05], [-3.1, -2.1], [3.1, -2.1]].forEach(([lx, lz]) => {
           const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.10, 0.22, 12), carvedGoldMat);
           cup.position.set(lx, 0.52, lz);
           const flame = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), lampGlowMat);
@@ -1355,147 +1868,236 @@ window.TempleModels3D = {
           root.add(cup, flame);
         });
 
-        // Sculpted Gnarled Bodhi Tree Trunk & Prop Roots
-        const mainTrunk = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.86, 3.6, 12), barkMat);
-        mainTrunk.position.set(0, 2.1, -0.35);
-        mainTrunk.castShadow = true;
-        root.add(mainTrunk);
+        // Helper: Smoothly Tapered Organic Tube along CatmullRomCurve3 (muscular base -> fine twig tip!)
+        const addTaperedBranch = (pts, rStart, rEnd, segs = 14, radSegs = 8, mat = barkMat) => {
+          const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(p[0], p[1], p[2])));
+          const geo = new THREE.TubeGeometry(curve, segs, 1.0, radSegs, false);
+          const posAttr = geo.attributes && geo.attributes.position;
+          if (posAttr && posAttr.getX && posAttr.setXYZ) {
+            const ringVerts = radSegs + 1;
+            for (let i = 0; i <= segs; i++) {
+              const t = i / segs;
+              const center = curve.getPointAt ? curve.getPointAt(t) : curve.getPoint(t);
+              const r = rStart + (rEnd - rStart) * t;
+              for (let j = 0; j < ringVerts; j++) {
+                const idx = i * ringVerts + j;
+                if (idx >= posAttr.count) break;
+                const vx = posAttr.getX(idx) - center.x;
+                const vy = posAttr.getY(idx) - center.y;
+                const vz = posAttr.getZ(idx) - center.z;
+                posAttr.setXYZ(idx, center.x + vx * r, center.y + vy * r, center.z + vz * r);
+              }
+            }
+            posAttr.needsUpdate = true;
+            if (geo.computeVertexNormals) geo.computeVertexNormals();
+          }
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.castShadow = true;
+          root.add(mesh);
+          return mesh;
+        };
 
-        for (let r = 0; r < 6; r++) {
-          const ang = (r / 6) * Math.PI * 2 + 0.3;
-          const propRoot = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.24, 2.1, 8), barkMat);
-          propRoot.position.set(Math.cos(ang) * 0.72, 1.25, -0.35 + Math.sin(ang) * 0.72);
-          propRoot.rotation.z = Math.cos(ang) * 0.36;
-          propRoot.rotation.x = -Math.sin(ang) * 0.36;
-          root.add(propRoot);
+        const cz = -0.45; // Tree bole center
+
+        // Intertwined Multi-Strand Ancient Gnarled Trunk (tapered organically, NO pipe ends!)
+        const trunkStrands = [
+          { pts: [[0.10, 0.55, cz + 0.18], [-0.26, 1.40, cz + 0.14], [0.16, 2.35, cz - 0.05], [-0.14, 3.30, cz + 0.05]], rs: 0.30, re: 0.16 },
+          { pts: [[-0.42, 0.52, cz + 0.06], [-0.16, 1.48, cz - 0.20], [-0.36, 2.42, cz - 0.12], [0.06, 3.45, cz - 0.08]], rs: 0.28, re: 0.15 },
+          { pts: [[0.48, 0.52, cz - 0.10], [0.34, 1.42, cz + 0.16], [0.24, 2.30, cz + 0.08], [0.64, 3.20, cz - 0.02]], rs: 0.27, re: 0.15 },
+          { pts: [[-0.08, 0.55, cz - 0.44], [0.14, 1.55, cz - 0.30], [-0.08, 2.55, cz - 0.22], [-0.16, 4.10, cz - 0.16]], rs: 0.26, re: 0.13 },
+          { pts: [[0.28, 0.52, cz + 0.38], [0.04, 1.32, cz + 0.28], [-0.28, 2.15, cz + 0.16], [-0.56, 3.00, cz + 0.05]], rs: 0.24, re: 0.13 }
+        ];
+        trunkStrands.forEach((s) => addTaperedBranch(s.pts, s.rs, s.re, 14, 8, barkMat));
+
+        // 12 Flared Exposed Surface Roots visibly resting ON TOP of & gripping the earth mound!
+        for (let r = 0; r < 12; r++) {
+          const ang = (r / 12) * Math.PI * 2 + 0.15;
+          const reach = 1.85 + (r % 3) * 0.45;
+          addTaperedBranch([
+            [Math.cos(ang) * 0.35, 1.45, cz + Math.sin(ang) * 0.35],
+            [Math.cos(ang) * 0.95, 0.95, cz + Math.sin(ang) * 0.95],
+            [Math.cos(ang) * (reach * 0.78), 0.72, cz + Math.sin(ang) * (reach * 0.78)],
+            [Math.cos(ang) * reach, 0.56, cz + Math.sin(ang) * reach]
+          ], 0.13, 0.032, 10, 6, rootMat);
         }
 
-        // Authentic Heart-Shaped Bodhi Leaf Geometry (with elongated drip-tip!)
+        // Wide Asymmetric Spreading Tapered Horizontal Boughs curving gracefully into leaf shelves
+        const primaryBoughs = [
+          // Prominent lower-left sweeping horizontal bough (signature bonsai silhouette)
+          { pts: [[-0.22, 2.75, cz], [-1.65, 2.94, cz + 0.14], [-3.25, 3.06, cz + 0.05], [-4.55, 3.38, cz - 0.08]], rs: 0.21, re: 0.045 },
+          { pts: [[-2.35, 2.98, cz + 0.08], [-3.35, 3.42, cz + 0.85], [-3.95, 3.68, cz + 1.12]], rs: 0.12, re: 0.032 },
+          { pts: [[-2.10, 3.00, cz + 0.05], [-3.05, 3.55, cz - 0.88], [-3.65, 3.82, cz - 1.22]], rs: 0.12, re: 0.032 },
+          // Prominent long sweeping right horizontal bough (signature silhouette)
+          { pts: [[0.30, 2.82, cz + 0.05], [1.75, 3.12, cz + 0.10], [3.35, 3.40, cz + 0.18], [4.75, 3.72, cz + 0.05]], rs: 0.215, re: 0.045 },
+          { pts: [[2.20, 3.22, cz + 0.14], [3.20, 3.68, cz + 1.08], [3.90, 3.96, cz + 1.42]], rs: 0.125, re: 0.032 },
+          { pts: [[2.50, 3.30, cz + 0.12], [3.40, 3.82, cz - 0.98], [4.00, 4.12, cz - 1.35]], rs: 0.125, re: 0.032 },
+          // Upper-left mid canopy tier
+          { pts: [[-0.18, 3.40, cz - 0.08], [-1.45, 4.12, cz - 0.15], [-2.85, 4.58, cz + 0.12], [-3.55, 4.90, cz + 0.22]], rs: 0.17, re: 0.038 },
+          // Upper-right secondary tier
+          { pts: [[0.22, 3.48, cz - 0.08], [1.50, 4.20, cz - 0.25], [2.75, 4.72, cz - 0.35], [3.45, 5.06, cz - 0.15]], rs: 0.17, re: 0.038 },
+          // Central upper crown boughs
+          { pts: [[-0.10, 3.92, cz - 0.15], [-0.48, 4.92, cz - 0.05], [-1.05, 5.78, cz + 0.15]], rs: 0.15, re: 0.036 },
+          { pts: [[0.10, 3.92, cz - 0.12], [0.58, 5.00, cz - 0.25], [1.15, 5.82, cz - 0.18]], rs: 0.15, re: 0.036 },
+          // Front & Rear depth boughs
+          { pts: [[0.0, 3.12, cz + 0.18], [-0.48, 3.82, cz + 1.38], [-1.02, 4.38, cz + 2.35]], rs: 0.14, re: 0.035 },
+          { pts: [[0.16, 3.22, cz + 0.22], [0.98, 3.95, cz + 1.32], [1.50, 4.48, cz + 2.15]], rs: 0.135, re: 0.035 },
+          { pts: [[0.0, 3.22, cz - 0.25], [-0.80, 3.98, cz - 1.48], [-1.22, 4.55, cz - 2.38]], rs: 0.14, re: 0.035 },
+          { pts: [[0.18, 3.32, cz - 0.25], [0.90, 4.12, cz - 1.52], [1.30, 4.65, cz - 2.32]], rs: 0.14, re: 0.035 }
+        ];
+        primaryBoughs.forEach((b) => addTaperedBranch(b.pts, b.rs, b.re, 12, 7, barkMat));
+
+        // 20 Natural Clustered Aerial Prop Roots flanking the gnarled trunks (exactly like the reference photo!)
+        const aerialRootAnchors = [
+          // Left bundle near trunk
+          [-1.55, 2.90, cz + 0.12, 0.036], [-1.25, 2.86, cz - 0.08, 0.044], [-1.02, 2.82, cz + 0.22, 0.032],
+          [-0.82, 2.75, cz - 0.18, 0.052], [-0.62, 2.68, cz + 0.26, 0.042], [-0.48, 2.60, cz - 0.28, 0.035],
+          [-2.15, 2.95, cz + 0.08, 0.028],
+          // Right dense bundle under right main limb
+          [0.52, 2.72, cz + 0.28, 0.046], [0.74, 2.88, cz - 0.14, 0.055], [0.95, 2.96, cz + 0.18, 0.038],
+          [1.12, 3.02, cz - 0.22, 0.048], [1.28, 3.06, cz + 0.06, 0.034], [1.46, 3.12, cz + 0.24, 0.042],
+          [1.68, 3.16, cz - 0.10, 0.036], [1.92, 3.20, cz + 0.12, 0.030], [2.25, 3.24, cz + 0.08, 0.026],
+          // Front/Rear subtle prop strands
+          [-0.35, 3.40, cz + 0.72, 0.028], [0.45, 3.45, cz + 0.68, 0.030],
+          [-0.65, 3.42, cz - 0.75, 0.032], [0.85, 3.50, cz - 0.78, 0.034]
+        ];
+        aerialRootAnchors.forEach(([ax, ay, az, r0], ai) => {
+          const sway1 = Math.sin(ai * 2.3) * 0.08;
+          const endX = ax * 0.90 + Math.cos(ai * 1.9) * 0.12;
+          const endZ = az + Math.sin(ai * 2.7) * 0.14;
+          addTaperedBranch(
+            [[ax, ay, az], [ax * 0.95 + sway1, (ay + 0.65) * 0.5, (az + endZ) * 0.5], [endX, 0.62, endZ]],
+            r0,
+            r0 * 1.25,
+            8,
+            5,
+            rootMat
+          );
+        });
+
+        // Crisp Feathery Bodhi Leaf Sprig Cards (layered natural leaf clusters, NO geometric yellow turnips!)
         const leafShape = this.createBodhiLeafShape(0.28);
         const leafGeo = new THREE.ShapeGeometry(leafShape, 8);
         const leafMats = [
-          new THREE.MeshStandardMaterial({ color: 0x2d8a4e, roughness: 0.55, side: THREE.DoubleSide }),
-          new THREE.MeshStandardMaterial({ color: 0x40a85b, roughness: 0.50, side: THREE.DoubleSide }),
-          new THREE.MeshStandardMaterial({ color: 0x74c67a, roughness: 0.48, side: THREE.DoubleSide }),
-          new THREE.MeshStandardMaterial({ color: 0xc9b849, emissive: 0x3b2f06, emissiveIntensity: 0.22, roughness: 0.45, side: THREE.DoubleSide })
+          new THREE.MeshStandardMaterial({ color: 0x267339, roughness: 0.58, side: THREE.DoubleSide }),
+          new THREE.MeshStandardMaterial({ color: 0x3a9448, roughness: 0.50, side: THREE.DoubleSide }),
+          new THREE.MeshStandardMaterial({ color: 0x5fb048, roughness: 0.46, side: THREE.DoubleSide }),
+          new THREE.MeshStandardMaterial({ color: 0x99b842, roughness: 0.48, side: THREE.DoubleSide })
         ];
 
-        // 8 Spreading Boughs + 24 Wind-Swaying 3D Bodhi Leaf Clusters
+        const sprigCardGeo = new THREE.PlaneGeometry(1.52, 1.52);
+        const sprigMats = [0, 1, 2].map((vi) => new THREE.MeshStandardMaterial({
+          map: this.createBodhiLeafSprigTexture(vi),
+          transparent: true,
+          alphaTest: 0.36,
+          roughness: 0.55,
+          side: THREE.DoubleSide
+        }));
+
+        // 26 Asymmetric Horizontal Feathery Canopy Shelves (wide tiered pads wrapping branch tips cleanly)
         const windLeafClusters = [];
-        const boughSpecs = [
-          { ang: 0.0, len: 3.1, y: 3.6, pitch: 0.42 },
-          { ang: 0.78, len: 3.2, y: 3.9, pitch: 0.48 },
-          { ang: 1.57, len: 3.0, y: 3.7, pitch: 0.44 },
-          { ang: 2.35, len: 3.2, y: 4.0, pitch: 0.50 },
-          { ang: 3.14, len: 3.1, y: 3.8, pitch: 0.46 },
-          { ang: 3.92, len: 3.0, y: 3.95, pitch: 0.45 },
-          { ang: 4.71, len: 3.2, y: 3.7, pitch: 0.44 },
-          { ang: 5.50, len: 3.1, y: 4.05, pitch: 0.49 }
+        const canopyPads = [
+          // Lower-left horizontal shelf
+          { x: -4.55, y: 3.55, z: cz - 0.08, s: 1.18 },
+          { x: -3.75, y: 3.78, z: cz + 1.05, s: 1.06 },
+          { x: -3.60, y: 3.92, z: cz - 1.15, s: 1.06 },
+          { x: -2.85, y: 3.78, z: cz + 0.05, s: 1.08 },
+          // Mid-right sweeping shelf
+          { x: 4.70, y: 3.85, z: cz + 0.05, s: 1.22 },
+          { x: 3.85, y: 4.08, z: cz + 1.32, s: 1.08 },
+          { x: 3.92, y: 4.24, z: cz - 1.28, s: 1.08 },
+          { x: 2.85, y: 4.12, z: cz + 0.15, s: 1.08 },
+          // Upper-left tiered canopy
+          { x: -3.50, y: 4.98, z: cz + 0.22, s: 1.14 },
+          { x: -2.35, y: 5.26, z: cz - 0.52, s: 1.14 },
+          { x: -1.98, y: 5.10, z: cz + 1.05, s: 1.02 },
+          // Upper-right tiered canopy
+          { x: 3.40, y: 5.18, z: cz - 0.15, s: 1.14 },
+          { x: 2.30, y: 5.44, z: cz - 0.62, s: 1.14 },
+          { x: 2.08, y: 5.20, z: cz + 0.95, s: 1.02 },
+          // Front & Rear mid shelves
+          { x: -1.00, y: 4.52, z: cz + 2.25, s: 1.04 },
+          { x: 1.45, y: 4.58, z: cz + 2.08, s: 1.04 },
+          { x: 0.20, y: 4.92, z: cz + 1.65, s: 1.08 },
+          { x: -1.20, y: 4.65, z: cz - 2.30, s: 1.04 },
+          { x: 1.25, y: 4.75, z: cz - 2.25, s: 1.04 },
+          { x: 0.05, y: 5.12, z: cz - 1.65, s: 1.08 },
+          // Broad Domed Crown Apex
+          { x: -1.12, y: 5.92, z: cz + 0.15, s: 1.18 },
+          { x: 1.12, y: 5.98, z: cz - 0.15, s: 1.18 },
+          { x: 0.0, y: 6.22, z: cz + 0.58, s: 1.14 },
+          { x: 0.0, y: 6.28, z: cz - 0.68, s: 1.14 },
+          { x: -0.25, y: 6.58, z: cz, s: 1.28 },
+          { x: 0.48, y: 6.48, z: cz - 0.12, s: 1.16 }
         ];
 
-        boughSpecs.forEach((bs, bi) => {
-          const boughPivot = new THREE.Group();
-          boughPivot.position.set(0, bs.y, -0.35);
-          boughPivot.rotation.y = bs.ang;
+        canopyPads.forEach((cp, pi) => {
+          const pad = new THREE.Group();
+          pad.position.set(cp.x, cp.y, cp.z);
+          pad.userData.windPhase = pi * 0.55;
 
-          const branchMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.24, bs.len, 8), barkMat);
-          branchMesh.rotation.z = -bs.pitch;
-          branchMesh.position.set(Math.sin(bs.pitch) * bs.len * 0.5, Math.cos(bs.pitch) * bs.len * 0.5, 0);
-          boughPivot.add(branchMesh);
+          // Rich tiered fan of 10 overlapping feathery Bodhi sprig cards (dense, natural, crisp leaf silhouettes!)
+          for (let si = 0; si < 10; si++) {
+            const ang = (si / 10) * Math.PI * 2 + pi * 0.41;
+            const mat = sprigMats[(pi + si) % sprigMats.length];
+            const card = new THREE.Mesh(sprigCardGeo, mat);
+            const rOff = (si % 2 === 0 ? 0.52 : 0.30) * cp.s;
+            card.position.set(Math.cos(ang) * rOff, ((si % 3) - 1) * 0.12, Math.sin(ang) * rOff * 0.88);
+            card.rotation.order = 'YXZ';
+            card.rotation.y = ang;
+            card.rotation.x = -Math.PI * 0.38 + (si % 3) * 0.10;
+            card.scale.set(cp.s * 1.05, cp.s * 0.96, cp.s);
+            pad.add(card);
+          }
 
-          // Mount 3 layered Bodhi leaf clusters per bough (tip, mid-outer, upper-crown)
-          [0.58, 0.92, 1.12].forEach((frac, ci) => {
-            const cluster = new THREE.Group();
-            const bx = Math.sin(bs.pitch) * bs.len * frac;
-            const by = Math.cos(bs.pitch) * bs.len * frac + (ci === 2 ? 0.55 : 0);
-            cluster.position.set(bx, by, (ci - 1) * 0.42);
-            cluster.userData.windPhase = bi * 0.85 + ci * 1.15;
-            cluster.userData.baseRotZ = cluster.rotation.z;
+          // Upper sunlit sprig crown cap
+          const capCard = new THREE.Mesh(sprigCardGeo, sprigMats[2]);
+          capCard.position.set(0, 0.24, 0);
+          capCard.rotation.x = -Math.PI * 0.48;
+          capCard.rotation.z = pi * 0.7;
+          capCard.scale.set(cp.s * 1.15, cp.s * 1.15, cp.s);
+          pad.add(capCard);
 
-            // Core soft foliage cushion for lush volume
-            const coreFoliage = new THREE.Mesh(
-              new THREE.SphereGeometry(0.75 + ci * 0.12, 10, 8),
-              new THREE.MeshLambertMaterial({ color: ci === 2 ? 0x52b788 : 0x2d6a4f, transparent: true, opacity: 0.72 })
-            );
-            coreFoliage.scale.set(1.25, 0.72, 1.15);
-            cluster.add(coreFoliage);
-
-            // 10 Individual 3D Heart-Shaped Bodhi Leaves radiating from the cluster
-            for (let li = 0; li < 10; li++) {
-              const lAng = (li / 10) * Math.PI * 2 + ci * 0.5;
-              const lMesh = new THREE.Mesh(leafGeo, leafMats[(bi + ci + li) % leafMats.length]);
-              const rad = 0.52 + (li % 3) * 0.26;
-              lMesh.position.set(Math.cos(lAng) * rad, ((li % 3) - 1) * 0.26, Math.sin(lAng) * rad);
-              lMesh.rotation.set(0.35 + (li % 3) * 0.25, lAng, 0.35);
-              const lScale = 0.95 + (li % 3) * 0.22;
-              lMesh.scale.set(lScale, lScale, lScale);
-              cluster.add(lMesh);
-            }
-            boughPivot.add(cluster);
-            windLeafClusters.push(cluster);
-          });
-
-          root.add(boughPivot);
+          root.add(pad);
+          windLeafClusters.push(pad);
         });
 
-        // Crown Top Canopy Cluster
-        const crownCluster = new THREE.Group();
-        crownCluster.position.set(0, 6.2, -0.35);
-        crownCluster.userData.windPhase = 0.4;
-        const crownCore = new THREE.Mesh(
-          new THREE.SphereGeometry(1.55, 12, 10),
-          new THREE.MeshLambertMaterial({ color: 0x40916c, transparent: true, opacity: 0.82 })
-        );
-        crownCore.scale.set(1.3, 0.72, 1.25);
-        crownCluster.add(crownCore);
-        for (let ti = 0; ti < 14; ti++) {
-          const tAng = (ti / 14) * Math.PI * 2;
-          const tLeaf = new THREE.Mesh(leafGeo, leafMats[ti % leafMats.length]);
-          tLeaf.position.set(Math.cos(tAng) * 1.4, (ti % 3) * 0.28, Math.sin(tAng) * 1.4);
-          tLeaf.rotation.set(0.55, tAng, 0.3);
-          tLeaf.scale.set(1.25, 1.25, 1.25);
-          crownCluster.add(tLeaf);
-        }
-        root.add(crownCluster);
-        windLeafClusters.push(crownCluster);
-
-        // Drifting Golden-Jade Bodhi Leaves Floating Gently in the Breeze
+        // 14 Drifting Golden-Jade Bodhi Leaves Floating Gently Beneath & Around the Wide Canopy
         const driftingLeaves = [];
         for (let dl = 0; dl < 14; dl++) {
           const dLeaf = new THREE.Mesh(leafGeo, leafMats[(dl % 2 === 0) ? 3 : 1]);
           const ang = (dl / 14) * Math.PI * 2;
-          const r = 1.6 + (dl % 3) * 0.85;
-          dLeaf.position.set(Math.cos(ang) * r, 1.4 + (dl % 5) * 0.9, -0.35 + Math.sin(ang) * r);
-          dLeaf.scale.set(0.8, 0.8, 0.8);
+          const r = 2.0 + (dl % 4) * 0.75;
+          dLeaf.position.set(Math.cos(ang) * r, 1.4 + (dl % 5) * 0.9, cz + Math.sin(ang) * r);
+          dLeaf.scale.set(0.42, 0.42, 0.42);
           dLeaf.userData = {
             baseX: Math.cos(ang) * r,
-            baseZ: -0.35 + Math.sin(ang) * r,
+            baseZ: cz + Math.sin(ang) * r,
             phase: dl * 0.7,
-            speed: 0.32 + (dl % 4) * 0.08
+            speed: 0.28 + (dl % 4) * 0.06
           };
           root.add(dLeaf);
           driftingLeaves.push(dLeaf);
         }
 
-        // Warm Tranquil Golden Light Beneath the Sacred Canopy
-        const canopyLight = new THREE.PointLight(0xffe082, 0.85, 12);
-        canopyLight.position.set(0, 4.2, 0.4);
+        // Warm Tranquil Sunlight & Sanctuary Glow beneath the Ancient Canopy
+        const canopyLight = new THREE.PointLight(0xffe494, 0.95, 14);
+        canopyLight.position.set(0, 4.6, 0.4);
         root.add(canopyLight);
 
         // Childhood Friend Xiao An NPC standing warmly beside the Vajrasana
         const friend = this.createNPC({ robeColor: 0x9b5de5, scale: 0.88 });
-        friend.position.set(-2.3, 0.42, 2.2);
+        friend.position.set(-2.5, 0.42, 2.75);
         friend.rotation.y = 0.55;
         root.add(friend);
 
-        // AFTER: Glowing Golden Wish Orbs floating gently among the Bodhi branches
+        // AFTER: Glowing Golden Wish Orbs floating gently among the wide Bodhi canopy
         for (let l = 0; l < 5; l++) {
           const ang = (l / 5) * Math.PI * 2;
           const orb = new THREE.Mesh(
             new THREE.SphereGeometry(0.18, 10, 8),
             new THREE.MeshBasicMaterial({ color: 0xffe66d })
           );
-          orb.position.set(Math.cos(ang) * 2.6, 3.6 + (l % 2) * 0.7, -0.35 + Math.sin(ang) * 2.6);
+          orb.position.set(Math.cos(ang) * 3.4, 3.8 + (l % 2) * 0.9, cz + Math.sin(ang) * 2.8);
           afterEffectGroup.add(orb);
         }
 
@@ -2615,14 +3217,14 @@ window.TempleModels3D = {
 
     const posAttr = terrainGeo.attributes.position;
     const colors = [];
-    const mossBright = new THREE.Color(0x88a962); // Calm earthy moss grass (Sansa-style realism)
-    const midForest = new THREE.Color(0x5b7f48);  // Natural olive-sage valley hillside
-    const deepShade = new THREE.Color(0x3b5938);  // Shady misty pine slopes
-    const riverBank = new THREE.Color(0x8c8770);  // Warm sand & mossy riverside stone
-    const wutaiAutumn = new THREE.Color(0xb5915a); // Warm golden-ochre Mount Wutai monastery slopes
-    const westJadeGarden = new THREE.Color(0x7aa36b); // Thangka-inspired emerald-sage Longevity Mountain meadow
-    const westTealPeak = new THREE.Color(0x5a8c7a);   // Blue-green Thangka mountains behind 长寿殿 summit
-    const snowAlpine = new THREE.Color(0xeef4fa);  // Snow-capped high mountain backdrop
+    const mossBright = new THREE.Color(0x82b446); // Sunlit Ghibli wildflower meadow green
+    const midForest = new THREE.Color(0x528a38);  // Rolling mid-slope emerald green
+    const deepShade = new THREE.Color(0x366434);  // Shady layered hillside forest green
+    const riverBank = new THREE.Color(0x8a9368);  // Mossy soft green-stone riverbank
+    const wutaiAutumn = new THREE.Color(0x989658); // Sun-warmed highland meadow slopes
+    const westJadeGarden = new THREE.Color(0x72a856); // Vibrant Ghibli hillside meadow green
+    const westTealPeak = new THREE.Color(0x53897a);   // Blue-green distant ridge
+    const snowAlpine = new THREE.Color(0xeef5fc);  // Snow-kissed alpine backdrop
 
     for (let i = 0; i < posAttr.count; i++) {
       const vx = posAttr.getX(i) + 10; // x covers [-170, +190]
@@ -2947,118 +3549,120 @@ window.TempleModels3D = {
       valleyGroup.add(ray);
     });
 
-    // 5. Lush 3D Green Grass Tufts & Soft Meadow Shrubs across both Valley Hillsides
+    // 5. Lush Painterly Ghibli Grass Blades, Blooming Daisies/Buttercups & Smooth Meadow Boulders (Image 2)
     const grassPositions = [];
-    for (let z = -16; z <= 108; z += 3.2) {
-      [-1, 1].forEach((side) => {
-        for (let row = 0; row < 8; row++) {
-          const x = side * (14.5 + row * 3.8 + Math.sin(z * 1.9 + row) * 1.2);
-          if (Math.abs(x) < 26.5 && z < 3.0) continue; // never place grass cones inside 大雄宝殿 floor/altar!
-          if (x > 22.5 && z > -18 && z < 38) continue;
-          if (x < -19.5 && z > -42 && z < 50) continue;
-          if (Math.abs(z - 13.5) < 3.6) continue;
-          if (Math.abs(x - window.GAME_DATA.getRiverCenterX(z)) < 3.4) continue;
+    for (let z = -18; z <= 108; z += 2.35) {
+      for (let x = -112; x <= 118; x += 2.75) {
+        const jx = x + Math.sin(z * 1.7 + x * 0.43) * 0.95;
+        const jz = z + Math.cos(x * 1.3 + z * 0.51) * 0.85;
+        if (Math.abs(jx) < 28 && jz < 5.0) continue; // Keep 大雄宝殿 floor clear
+        if (jx < -18 && jx > -126 && jz >= -6 && jz <= 12) continue; // Keep 七佛殿 stair corridor & ponds clear
+        if (jx < -72 && jx > -126 && jz > -24 && jz < 32) continue; // Keep 七佛殿 summit plaza clear
+        if (jx > 21 && jx < 152 && jz >= -6 && jz <= 12) continue; // Keep 文殊殿 stair corridor clear
+        if (jx > 98 && jx < 152 && jz > -24 && jz < 36) continue; // Keep 文殊殿 summit plaza clear
+        if (jx < -20 && jz >= 10 && jz <= 24) continue; // Keep West trail gardens & stupas clear
+        if (jx > 26 && jx < 110 && (Math.hypot(jx - 50.5, jz - 14.5) < 6.5 || Math.hypot(jx - 85.0, jz + 10.0) < 6.5)) continue;
+        if (jx >= -51 && jx <= -36 && jz >= 5 && jz <= 53) continue; // Keep 瀑布清流 stone path clear
+        if (Math.abs(jz - 13.5) < 4.2 && Math.abs(jx) < 30) continue; // Keep temple front river clear
+        if (Math.abs(jx - 30) < 4.5 && jz > -60 && jz < 48) continue; // Keep East river clear
+        if (Math.hypot(jx - 18.0, jz - 6.5) < 5.6) continue; // Keep Moon Pond clear
+        if (jz > 16 && Math.abs(jx - window.GAME_DATA.getRiverCenterX(jz)) < 4.4) continue; // Keep stream clear
 
-          let nearDeed = false;
-          for (const d of window.GAME_DATA.GOOD_DEEDS) {
-            if (Math.hypot(x - d.pos.x, z - d.pos.z) < 6.4) {
-              nearDeed = true;
-              break;
-            }
-          }
-          if (nearDeed) continue;
-
-          const y = window.GAME_DATA.getTerrainHeight(x, z);
-          const scale = 0.75 + ((Math.abs(Math.sin(x * 2.3 + z * 1.7))) * 0.65);
-          grassPositions.push({ x, y, z, rotY: (x + z) * 0.7, scale });
+        // Keep winding cobblestone mountain trail clear
+        if (jz >= 17 && jz <= 107) {
+          const rcx = window.GAME_DATA.getRiverCenterX(jz);
+          let tpx = rcx > 0 ? rcx - 5.2 : rcx + 5.2;
+          if (Math.abs(jz - 36.0) < 5.5) tpx *= (Math.abs(jz - 36.0) / 5.5);
+          if (jz < 24.0) tpx *= ((jz - 18.5) / 5.5);
+          if (Math.abs(jx - tpx) < 4.4) continue;
         }
-      });
+        if (Math.abs(jx) < 9 && jz >= 96 && jz <= 112) continue; // Keep Summit spawn archway clear
+
+        let nearDeed = false;
+        for (const d of window.GAME_DATA.GOOD_DEEDS) {
+          if (Math.hypot(jx - d.pos.x, jz - d.pos.z) < 5.8) {
+            nearDeed = true;
+            break;
+          }
+        }
+        if (nearDeed) continue;
+
+        const y = window.GAME_DATA.getTerrainHeight(jx, jz);
+        if (y < 0.05) continue;
+        const scale = 0.78 + ((Math.abs(Math.sin(jx * 2.3 + jz * 1.7))) * 0.58);
+        grassPositions.push({ x: jx, y, z: jz, rotY: (jx + jz) * 0.75, scale });
+      }
     }
+    this.populateMeadowGrassAndFlowers(valleyGroup, grassPositions);
 
-    const tuftGeo = new THREE.ConeGeometry(0.55, 1.15, 6);
-    const tuftMat1 = new THREE.MeshStandardMaterial({ color: 0x4b7040, roughness: 0.92 });
-    const tuftMat2 = new THREE.MeshStandardMaterial({ color: 0x62854b, roughness: 0.92 });
-    const grassInst1 = new THREE.InstancedMesh(tuftGeo, tuftMat1, grassPositions.length);
-    const grassInst2 = new THREE.InstancedMesh(tuftGeo, tuftMat2, grassPositions.length);
-
-    const dummy = new THREE.Object3D();
-    grassPositions.forEach((gp, idx) => {
-      dummy.position.set(gp.x, gp.y + 0.42 * gp.scale, gp.z);
-      dummy.rotation.set(0.12, gp.rotY, -0.1);
-      dummy.scale.set(gp.scale, gp.scale, gp.scale);
-      dummy.updateMatrix();
-      grassInst1.setMatrixAt(idx, dummy.matrix);
-
-      dummy.position.set(gp.x + 0.32, gp.y + 0.35 * gp.scale, gp.z + 0.22);
-      dummy.rotation.set(-0.1, gp.rotY + 1.1, 0.14);
-      dummy.scale.set(gp.scale * 0.85, gp.scale * 0.9, gp.scale * 0.85);
-      dummy.updateMatrix();
-      grassInst2.setMatrixAt(idx, dummy.matrix);
-    });
-    valleyGroup.add(grassInst1, grassInst2);
-
-    // 6. Majestic Misty Green Horizon Mountains encircling Valley (kept well behind 大雄宝殿 z=-38.4!)
-    const mountainConfigs = [
-      { x: -55, z: -88, r: 38, h: 42 },
-      { x: 0, z: -96, r: 42, h: 48 },
-      { x: 55, z: -88, r: 38, h: 40 },
-      { x: -85, z: 108, r: 32, h: 38 },
-      { x: 76, z: 68, r: 34, h: 38 },
-      { x: -24, z: 132, r: 36, h: 44 },
-      { x: 24, z: 132, r: 36, h: 44 }
-    ];
-
-    const greenMountainMat = new THREE.MeshLambertMaterial({ color: 0x3b7a3d });
-    const mistPeakMat = new THREE.MeshLambertMaterial({ color: 0xb7d9bc });
-
-    mountainConfigs.forEach((mc) => {
-      const mGroup = new THREE.Group();
-      const baseCone = new THREE.Mesh(new THREE.ConeGeometry(mc.r, mc.h, 12), greenMountainMat);
-      baseCone.position.y = mc.h / 2 - 2;
-      const mistCone = new THREE.Mesh(
-        new THREE.ConeGeometry(mc.r * 0.42, mc.h * 0.42, 12),
-        mistPeakMat
-      );
-      mistCone.position.y = mc.h * 0.80 - 2;
-      mGroup.add(baseCone, mistCone);
-      mGroup.position.set(mc.x, 0, mc.z);
-      valleyGroup.add(mGroup);
-    });
-
-    // Distant Blue-Green Thangka Backdrop Peaks far behind the West Longevity Summit Plaza (non-encroaching)
-    const westThangkaBaseMat = new THREE.MeshLambertMaterial({ color: 0x4b7d6e });
-    const westThangkaMistMat = new THREE.MeshLambertMaterial({ color: 0xcbe8df });
+    // Smooth grey weathered boulders nestled cleanly into gentle sunlit hills (matching Image 2!)
     [
-      { x: -168, z: -30, r: 40, h: 60 },
-      { x: -174, z: 4, r: 46, h: 70 },
-      { x: -166, z: 38, r: 40, h: 58 }
+      [-15.5, 44.0, 2.2, 1.05, 1.7], [17.5, 54.0, 2.4, 1.15, 1.8],
+      [-19.5, 74.0, 2.6, 1.25, 2.0], [18.5, 82.0, 2.1, 0.95, 1.6],
+      [-14.5, 26.0, 1.9, 0.90, 1.5], [21.0, 34.0, 2.3, 1.10, 1.8],
+      [16.5, 94.0, 2.0, 0.95, 1.6]
+    ].forEach(([bx, bz, sx, sy, sz], idx) => {
+      const by = window.GAME_DATA.getTerrainHeight(bx, bz);
+      const stone = this.createSculptedMeadowStone(sx, sy, sz, 4.2 + idx * 1.3);
+      stone.position.set(bx, by - sy * 0.15, bz);
+      stone.rotation.y = idx * 1.1;
+      valleyGroup.add(stone);
+    });
+
+    // 6. Sweeping Layered Ghibli Rolling Green Hills, Alpine Peaks & Fluffy Cumulus Clouds (Image 2)
+    [
+      // Foreground northern rolling green foothills hiding outer terrain edges seamlessly
+      { x: -38, z: -62, rx: 46, ry: 17, rz: 24, style: 'green_ridge', seed: 0.7 },
+      { x: 0, z: -66, rx: 52, ry: 19, rz: 26, style: 'green_ridge', seed: 1.5 },
+      { x: 38, z: -62, rx: 46, ry: 17, rz: 24, style: 'green_ridge', seed: 2.1 },
+      // Mid-distance layered undulating green hills
+      { x: -62, z: -76, rx: 52, ry: 22, rz: 34, style: 'green_ridge', seed: 1.1 },
+      { x: 0, z: -86, rx: 64, ry: 26, rz: 36, style: 'green_ridge', seed: 2.4 },
+      { x: 64, z: -76, rx: 54, ry: 23, rz: 34, style: 'green_ridge', seed: 3.7 },
+      { x: -92, z: 96, rx: 48, ry: 25, rz: 38, style: 'green_ridge', seed: 4.5 },
+      { x: 82, z: 72, rx: 46, ry: 24, rz: 36, style: 'green_ridge', seed: 5.2 },
+      { x: -32, z: 128, rx: 54, ry: 26, rz: 38, style: 'green_ridge', seed: 6.1 },
+      { x: 34, z: 130, rx: 54, ry: 25, rz: 38, style: 'green_ridge', seed: 7.3 },
+      // Far misty emerald-teal mountain ridges & distant snow-streaked alpine peak
+      { x: -45, z: -112, rx: 68, ry: 38, rz: 42, style: 'thangka_ridge', seed: 8.2 },
+      { x: 45, z: -116, rx: 68, ry: 40, rz: 42, style: 'thangka_ridge', seed: 9.4 },
+      { x: 0, z: -132, rx: 78, ry: 48, rz: 46, style: 'alpine_peak', seed: 10.6 }
+    ].forEach((m) => {
+      const mMesh = this.createRollingGhibliMountain(m.rx, m.ry, m.rz, m.seed, m.style);
+      mMesh.position.set(m.x, -1.5, m.z);
+      valleyGroup.add(mMesh);
+    });
+
+    // Distant rolling jade-teal Thangka ridges far behind the West Longevity Summit Plaza (non-encroaching)
+    [
+      { x: -168, z: -34, rx: 48, ry: 44, rz: 44, style: 'thangka_ridge', seed: 11.1 },
+      { x: -178, z: 4, rx: 52, ry: 52, rz: 50, style: 'thangka_ridge', seed: 12.3 },
+      { x: -168, z: 42, rx: 48, ry: 42, rz: 44, style: 'thangka_ridge', seed: 13.5 }
     ].forEach((wp) => {
-      const wGroup = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.ConeGeometry(wp.r, wp.h, 14), westThangkaBaseMat);
-      base.position.y = wp.h / 2 + 2;
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(wp.r * 0.50, wp.h * 0.50, 14), westThangkaMistMat);
-      cap.position.y = wp.h * 0.78 + 2;
-      wGroup.add(base, cap);
-      wGroup.position.set(wp.x, 0, wp.z);
-      valleyGroup.add(wGroup);
+      const wMesh = this.createRollingGhibliMountain(wp.rx, wp.ry, wp.rz, wp.seed, wp.style);
+      wMesh.position.set(wp.x, 2, wp.z);
+      valleyGroup.add(wMesh);
     });
 
-    // Snow-Capped Blue-Slate Alpine Ridges behind Mount Wutai 文殊殿 (Reference Photo!)
-    const alpineSlateMat = new THREE.MeshLambertMaterial({ color: 0x5c6f8c });
-    const snowCapMat = new THREE.MeshLambertMaterial({ color: 0xf4f8fc });
+    // Distant Snow-Streaked Blue-Slate Alpine Ridges behind Mount Wutai 文殊殿 (Image 2!)
     [
-      { x: 168, z: -32, r: 42, h: 64 },
-      { x: 174, z: 6, r: 48, h: 74 },
-      { x: 166, z: 42, r: 40, h: 62 }
+      { x: 168, z: -34, rx: 48, ry: 48, rz: 46, style: 'alpine_peak', seed: 14.2 },
+      { x: 180, z: 6, rx: 54, ry: 58, rz: 52, style: 'alpine_peak', seed: 15.6 },
+      { x: 168, z: 44, rx: 46, ry: 46, rz: 46, style: 'alpine_peak', seed: 16.8 }
     ].forEach((ap) => {
-      const aGroup = new THREE.Group();
-      const base = new THREE.Mesh(new THREE.ConeGeometry(ap.r, ap.h, 14), alpineSlateMat);
-      base.position.y = ap.h / 2 + 2;
-      const snow = new THREE.Mesh(new THREE.ConeGeometry(ap.r * 0.56, ap.h * 0.56, 14), snowCapMat);
-      snow.position.y = ap.h * 0.78 + 2;
-      aGroup.add(base, snow);
-      aGroup.position.set(ap.x, 0, ap.z);
-      valleyGroup.add(aGroup);
+      const aMesh = this.createRollingGhibliMountain(ap.rx, ap.ry, ap.rz, ap.seed, ap.style);
+      aMesh.position.set(ap.x, 2, ap.z);
+      valleyGroup.add(aMesh);
+    });
+
+    // Painterly Fluffy White Cumulus Clouds rising high behind the mountain horizon (Image 2!)
+    [
+      [-65, 62, -138, 1.55], [12, 68, -148, 1.85], [88, 60, -135, 1.45],
+      [-172, 66, -15, 1.40], [172, 68, 10, 1.50], [0, 64, 150, 1.65]
+    ].forEach(([cx, cy, cz, cs], ci) => {
+      const cloud = this.createGhibliCloudCluster(cs, ci * 1.9);
+      cloud.position.set(cx, cy, cz);
+      valleyGroup.add(cloud);
     });
 
     // 7. Sansa-Style Glowing Stone Floor Lanterns (石灯) along temple forecourt & mountain trail
@@ -3293,52 +3897,56 @@ window.TempleModels3D = {
     return g;
   },
 
-  // -------------------- SIMPLER CUTE CHIBI BABY MONK (Exact Sticker Style from User Image) --------------------
-  // -------------------- PICTURE #2 CUTE GOLDEN-ROBED BUDDHA-CHILD CHARACTER --------------------
+  // -------------------- CUTE BALD CHIBI TIBETAN LITTLE MONK (IMAGE 1 DESIGN) --------------------
   createCuteRedTibetanMonkParts(THREE) {
     const group = new THREE.Group();
 
-    const goldKasayaMat = new THREE.MeshLambertMaterial({ color: 0xf4c41c });
-    const kasayaFoldMat = new THREE.MeshLambertMaterial({ color: 0xe3a008 });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xffe0c4 });
-    const cheekMat = new THREE.MeshBasicMaterial({ color: 0xff9494, transparent: true, opacity: 0.65 });
-    const featureMat = new THREE.MeshBasicMaterial({ color: 0x1e1b24 });
-    const smileMat = new THREE.MeshBasicMaterial({ color: 0xa61d24 });
-    const dotMat = new THREE.MeshBasicMaterial({ color: 0xb91c1c });
-    const navyHairMat = new THREE.MeshLambertMaterial({ color: 0x102a5c });
-    const haloGlowMat = new THREE.MeshBasicMaterial({
-      color: 0xe0f2fe,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.56
-    });
-    const haloRayMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.45
-    });
+    const kasayaMat = new THREE.MeshStandardMaterial({ color: 0x5a1413, roughness: 0.86, metalness: 0.02 });
+    const kasayaFoldMat = new THREE.MeshStandardMaterial({ color: 0x3d0b0a, roughness: 0.90, metalness: 0.02 });
+    const kasayaHiMat = new THREE.MeshStandardMaterial({ color: 0x6e1a18, roughness: 0.82, metalness: 0.02 });
+    const saffronMat = new THREE.MeshStandardMaterial({ color: 0xd98a18, roughness: 0.76 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xefc098, roughness: 0.74, metalness: 0.01 });
+    const innerEarMat = new THREE.MeshStandardMaterial({ color: 0xda9b74, roughness: 0.78 });
+    const cheekMat = new THREE.MeshBasicMaterial({ color: 0xf28b82, transparent: true, opacity: 0.44 });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x22130c, roughness: 0.16, metalness: 0.08 });
+    const browMat = new THREE.MeshBasicMaterial({ color: 0x3a2014 });
+    const smileMat = new THREE.MeshBasicMaterial({ color: 0x6b2822 });
+    const glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const beadLightMat = new THREE.MeshStandardMaterial({ color: 0xd8b384, roughness: 0.55 });
+    const beadDarkMat = new THREE.MeshStandardMaterial({ color: 0x4d2c1e, roughness: 0.55 });
 
-    // Lower golden pleated kasaya robe & bare cute feet (Picture #2)
+    // Lower crimson-maroon draped Tibetan kasaya skirt & feet
     const lowerBody = new THREE.Group();
-    const robeSkirt = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 0.58, 18), goldKasayaMat);
-    robeSkirt.position.y = 0.46;
+    const robeSkirt = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.39, 0.62, 20), kasayaMat);
+    robeSkirt.position.y = 0.45;
     robeSkirt.castShadow = true;
-    lowerBody.add(robeSkirt);
+
+    // Front overlapping wrapped apron panel & vertical fold pleats scaled automatically when sitting
+    const frontApron = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.282, 0.402, 0.56, 14, 1, false, -0.55, 2.3),
+      kasayaDarkFoldFallback(kasayaFoldMat, kasayaHiMat)
+    );
+    frontApron.position.y = -0.02;
+    robeSkirt.add(frontApron);
 
     for (let f = 0; f < 5; f++) {
-      const ang = -0.7 + f * 0.35;
-      const pleat = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.54, 6), kasayaFoldMat);
-      pleat.position.set(Math.sin(ang) * 0.34, 0.46, Math.cos(ang) * 0.34);
-      lowerBody.add(pleat);
+      const ang = -0.68 + f * 0.34;
+      const pleat = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.042, 0.56, 6), kasayaFoldMat);
+      pleat.position.set(Math.sin(ang) * 0.34, -0.01, Math.cos(ang) * 0.34);
+      robeSkirt.add(pleat);
+    }
+    lowerBody.add(robeSkirt);
+
+    function kasayaDarkFoldFallback(foldM) {
+      return foldM;
     }
 
     const leftLeg = new THREE.Group();
     leftLeg.position.set(-0.13, 0.18, 0);
     const lLegCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.068, 0.14, 10), skinMat);
     lLegCyl.position.y = -0.06;
-    const lFoot = new THREE.Mesh(new THREE.SphereGeometry(0.092, 12, 10), skinMat);
-    lFoot.scale.set(0.95, 0.55, 1.35);
+    const lFoot = new THREE.Mesh(new THREE.SphereGeometry(0.090, 12, 10), skinMat);
+    lFoot.scale.set(0.95, 0.55, 1.32);
     lFoot.position.set(0, -0.13, 0.04);
     leftLeg.add(lLegCyl, lFoot);
 
@@ -3346,35 +3954,32 @@ window.TempleModels3D = {
     rightLeg.position.set(0.13, 0.18, 0);
     const rLegCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.068, 0.14, 10), skinMat);
     rLegCyl.position.y = -0.06;
-    const rFoot = new THREE.Mesh(new THREE.SphereGeometry(0.092, 12, 10), skinMat);
-    rFoot.scale.set(0.95, 0.55, 1.35);
+    const rFoot = new THREE.Mesh(new THREE.SphereGeometry(0.090, 12, 10), skinMat);
+    rFoot.scale.set(0.95, 0.55, 1.32);
     rFoot.position.set(0, -0.13, 0.04);
     rightLeg.add(rLegCyl, rFoot);
 
-    // Removable Monastic Cloth Shoes (toggled off when removing shoes before entering any Prayer Hall!)
+    // Warm dark-brown monastic cloth shoes (matching Image 1!)
     const shoesGroup = new THREE.Group();
-    const shoeMat = new THREE.MeshStandardMaterial({ color: 0x241d19, roughness: 0.72 });
-    const soleMat = new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 0.82 });
-    const shoeTrimMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.45 });
-    [leftLeg, rightLeg].forEach((legGrp, idx) => {
+    const shoeMat = new THREE.MeshStandardMaterial({ color: 0x3a261c, roughness: 0.78 });
+    const soleMat = new THREE.MeshStandardMaterial({ color: 0x241710, roughness: 0.88 });
+    [leftLeg, rightLeg].forEach((_legGrp, idx) => {
       const shoeItem = new THREE.Group();
+      const sx = idx === 0 ? -0.13 : 0.13;
       const sBase = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 10), shoeMat);
       sBase.scale.set(0.98, 0.62, 1.42);
-      sBase.position.set(idx === 0 ? -0.13 : 0.13, 0.055, 0.045);
+      sBase.position.set(sx, 0.055, 0.045);
       const sSole = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.10, 0.032, 12), soleMat);
       sSole.scale.set(1.0, 1.0, 1.38);
-      sSole.position.set(idx === 0 ? -0.13 : 0.13, 0.02, 0.045);
-      const sStripe = new THREE.Mesh(new THREE.TorusGeometry(0.072, 0.012, 6, 12), shoeTrimMat);
-      sStripe.rotation.x = Math.PI / 2;
-      sStripe.position.set(idx === 0 ? -0.13 : 0.13, 0.09, 0.04);
-      shoeItem.add(sBase, sSole, sStripe);
+      sSole.position.set(sx, 0.02, 0.045);
+      shoeItem.add(sBase, sSole);
       shoesGroup.add(shoeItem);
     });
     lowerBody.add(leftLeg, rightLeg, shoesGroup);
     group.add(lowerBody);
     group.userData.shoesGroup = shoesGroup;
 
-    // Sitting white concentric light ripples (Picture #4 - shown when seated)
+    // Sitting white concentric light ripples (shown only when seated)
     const rippleGroup = new THREE.Group();
     [0.62, 0.85, 1.08].forEach((r, idx) => {
       const ring = new THREE.Mesh(
@@ -3388,120 +3993,135 @@ window.TempleModels3D = {
     rippleGroup.visible = false;
     group.add(rippleGroup);
 
-    // Upper body: One-shoulder golden kasaya + diagonal folds + bare right shoulder (-X)
+    // Upper body: Crimson-Maroon Tibetan Kasaya + Golden Saffron Inner Collar + Draped Shawl + Mala Prayer Beads
     const upperBody = new THREE.Group();
     upperBody.position.y = 0.74;
     group.add(upperBody);
 
-    const bareTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.48, 16), skinMat);
-    bareTorso.position.y = 0.25;
-    bareTorso.castShadow = true;
-    upperBody.add(bareTorso);
+    // Inner saffron vest visible at V-neckline & right collar
+    const saffronVest = new THREE.Mesh(new THREE.CylinderGeometry(0.225, 0.255, 0.34, 16), saffronMat);
+    saffronVest.position.set(0, 0.30, 0.01);
+    upperBody.add(saffronVest);
 
-    const lowerWrap = new THREE.Mesh(new THREE.CylinderGeometry(0.265, 0.30, 0.34, 16), goldKasayaMat);
-    lowerWrap.position.y = 0.16;
-    lowerWrap.castShadow = true;
-    upperBody.add(lowerWrap);
+    // Maroon lower torso wrap
+    const maroonTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.255, 0.295, 0.44, 18), kasayaMat);
+    maroonTorso.position.y = 0.21;
+    maroonTorso.castShadow = true;
+    upperBody.add(maroonTorso);
 
-    const shoulderFold = new THREE.Mesh(new THREE.TorusGeometry(0.275, 0.072, 10, 22), kasayaFoldMat);
-    shoulderFold.position.set(0.03, 0.30, 0.01);
-    shoulderFold.rotation.set(0.45, 0.15, 0.62);
-    const secondFold = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.036, 8, 20), goldKasayaMat);
-    secondFold.position.set(0.02, 0.21, 0.015);
-    secondFold.rotation.set(0.42, 0.15, 0.58);
-    upperBody.add(shoulderFold, secondFold);
+    // Diagonal folded kasaya shawl running over left shoulder (+X) leaving right arm (-X) & saffron V-neck visible
+    const shawlBand = new THREE.Mesh(new THREE.TorusGeometry(0.265, 0.075, 10, 22), kasayaHiMat);
+    shawlBand.position.set(0.04, 0.32, 0.02);
+    shawlBand.rotation.set(0.46, 0.14, 0.64);
+    const collarRoll = new THREE.Mesh(new THREE.TorusGeometry(0.185, 0.048, 10, 20), kasayaFoldMat);
+    collarRoll.position.set(0, 0.46, 0.01);
+    collarRoll.rotation.x = Math.PI / 2 + 0.12;
+    const backDrapery = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.12), kasayaFoldMat);
+    backDrapery.position.set(0, 0.23, -0.17);
+    upperBody.add(shawlBand, collarRoll, backDrapery);
 
-    // Joyful outstretched bare right arm (-X) & covered golden left arm (+X)
+    // Hanging wooden & bodhi Mala Prayer Beads draped gently below hands (Image 1!)
+    const malaGroup = new THREE.Group();
+    const beadCount = 18;
+    for (let bi = 0; bi < beadCount; bi++) {
+      const ang = (bi / beadCount) * Math.PI * 2;
+      const bead = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 8, 8),
+        bi === beadCount / 2 ? beadLightMat : (bi % 2 === 0 ? beadLightMat : beadDarkMat)
+      );
+      bead.position.set(Math.sin(ang) * 0.095, 0.12 - Math.cos(ang) * 0.125, 0.285 + Math.cos(ang) * 0.015);
+      malaGroup.add(bead);
+    }
+    upperBody.add(malaGroup);
+
+    // Seamless bare chubby right arm (-X) curving cleanly down & forward to the prayer beads
     const leftArm = new THREE.Group();
-    leftArm.position.set(-0.30, 0.43, 0);
-    const rShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 10), skinMat);
-    const rArmCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.06, 0.34, 10), skinMat);
-    rArmCyl.position.y = -0.17;
-    const rHand = new THREE.Mesh(new THREE.SphereGeometry(0.078, 10, 10), skinMat);
-    rHand.position.y = -0.36;
-    leftArm.add(rShoulder, rArmCyl, rHand);
+    leftArm.position.set(-0.245, 0.385, 0.025);
+    const armCuff = new THREE.Mesh(new THREE.TorusGeometry(0.078, 0.026, 8, 14), kasayaFoldMat);
+    armCuff.rotation.y = Math.PI / 2;
+    armCuff.rotation.x = 0.25;
+    armCuff.position.set(0.035, 0.005, 0);
+    const rShoulder = new THREE.Mesh(new THREE.SphereGeometry(0.072, 12, 10), skinMat);
+    rShoulder.position.set(0.005, -0.015, 0.01);
+    const rUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.066, 0.060, 0.17, 10), skinMat);
+    rUpperArm.position.set(0.015, -0.095, 0.04);
+    rUpperArm.rotation.set(-0.35, 0, -0.14);
+    const rElbow = new THREE.Mesh(new THREE.SphereGeometry(0.060, 10, 10), skinMat);
+    rElbow.position.set(0.032, -0.17, 0.08);
+    const rForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.054, 0.16, 10), skinMat);
+    rForearm.position.set(0.062, -0.21, 0.13);
+    rForearm.rotation.set(-0.85, 0.35, -0.42);
+    const rHand = new THREE.Mesh(new THREE.SphereGeometry(0.070, 10, 10), skinMat);
+    rHand.position.set(0.092, -0.24, 0.175);
+    leftArm.add(armCuff, rShoulder, rUpperArm, rElbow, rForearm, rHand);
 
+    // Clean draped crimson-maroon left sleeve & rounded shoulder cape (+X) with soft peach hand
     const rightArm = new THREE.Group();
-    rightArm.position.set(0.30, 0.43, 0);
-    const lSleeve = new THREE.Mesh(new THREE.ConeGeometry(0.135, 0.34, 12), goldKasayaMat);
-    lSleeve.position.y = -0.14;
-    const lHand = new THREE.Mesh(new THREE.SphereGeometry(0.078, 10, 10), skinMat);
-    lHand.position.y = -0.36;
-    rightArm.add(lSleeve, lHand);
+    rightArm.position.set(0.27, 0.40, 0.02);
+    const lCapeDome = new THREE.Mesh(new THREE.SphereGeometry(0.115, 12, 10), kasayaMat);
+    lCapeDome.scale.set(0.95, 1.15, 0.95);
+    lCapeDome.position.set(-0.01, -0.03, 0.01);
+    const lSleeve = new THREE.Mesh(new THREE.ConeGeometry(0.145, 0.34, 14), kasayaMat);
+    lSleeve.position.set(-0.04, -0.16, 0.07);
+    lSleeve.rotation.set(-0.48, 0, 0.24);
+    const lHand = new THREE.Mesh(new THREE.SphereGeometry(0.072, 10, 10), skinMat);
+    lHand.position.set(-0.11, -0.25, 0.175);
+    rightArm.add(lCapeDome, lSleeve, lHand);
     upperBody.add(leftArm, rightArm);
 
-    // Picture #2 Head: Chibi face, navy sculpted hair + round topknot bun, red urna dot, ^_^ happy eyes, open red smile & luminous radial sky halo!
+    // Smooth Cute Bald Chibi Little Monk Head (Image 1 - no hair cap, no topknot, no red forehead dot)
     const headGroup = new THREE.Group();
-    headGroup.position.set(0, 0.90, 0);
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.415, 24, 20), skinMat);
-    headMesh.scale.set(1.03, 0.98, 0.96);
+    headGroup.position.set(0, 0.89, 0.01);
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.415, 28, 24), skinMat);
+    headMesh.scale.set(1.04, 1.0, 0.97);
     headMesh.castShadow = true;
     headGroup.add(headMesh);
 
-    const navyCap = new THREE.Mesh(
-      new THREE.SphereGeometry(0.428, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.54),
-      navyHairMat
-    );
-    navyCap.scale.set(1.03, 0.98, 0.98);
-    navyCap.position.set(0, 0.03, -0.035);
-    navyCap.rotation.x = -0.22;
-    const topKnotBun = new THREE.Mesh(new THREE.SphereGeometry(0.165, 16, 14), navyHairMat);
-    topKnotBun.scale.set(1.08, 0.85, 1.0);
-    topKnotBun.position.set(0, 0.43, -0.05);
-    headGroup.add(navyCap, topKnotBun);
-
-    [-0.41, 0.41].forEach((ex) => {
-      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.095, 10, 10), skinMat);
-      ear.scale.set(0.55, 1.25, 0.70);
-      ear.position.set(ex, -0.04, -0.01);
-      headGroup.add(ear);
+    // Rounded chibi ears with soft inner hollows
+    [-0.415, 0.415].forEach((ex) => {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.098, 12, 10), skinMat);
+      ear.scale.set(0.55, 1.24, 0.70);
+      ear.position.set(ex, -0.05, -0.02);
+      const earInner = new THREE.Mesh(new THREE.SphereGeometry(0.056, 8, 8), innerEarMat);
+      earInner.scale.set(0.45, 0.92, 0.50);
+      earInner.position.set(ex * 0.985, -0.05, 0.005);
+      headGroup.add(ear, earInner);
     });
 
-    // Red Forehead Urna Dot
-    const urnaDot = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 10), dotMat);
-    urnaDot.position.set(0, 0.165, 0.398);
-    headGroup.add(urnaDot);
+    // Big glossy dark espresso eyes + bright white catchlight glints + soft arched eyebrows + rosy cheeks
+    [-0.135, 0.135].forEach((ex) => {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.058, 14, 12), eyeMat);
+      eye.scale.set(0.95, 1.14, 0.55);
+      eye.position.set(ex, 0.005, 0.378);
 
-    // Curved Happy Smiling Eyes (^_^) + Rosy Cheeks
-    [-0.145, 0.145].forEach((ex) => {
-      const happyEye = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.017, 6, 14, Math.PI), featureMat);
-      happyEye.position.set(ex, 0.005, 0.378);
-      happyEye.rotation.z = ex < 0 ? 0.08 : -0.08;
+      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.019, 8, 8), glintMat);
+      glint.position.set(ex - 0.018, 0.026, 0.405);
+      const glintSub = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 6), glintMat);
+      glintSub.position.set(ex + 0.016, -0.016, 0.404);
 
-      const blush = new THREE.Mesh(new THREE.CircleGeometry(0.072, 14), cheekMat);
-      blush.scale.set(1.25, 0.72, 1);
-      blush.position.set(ex * 1.48, -0.08, 0.348);
+      const brow = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.012, 6, 12, Math.PI * 0.68), browMat);
+      brow.position.set(ex, 0.112, 0.365);
+      brow.rotation.z = ex < 0 ? 0.44 : 0.57;
+
+      const blush = new THREE.Mesh(new THREE.CircleGeometry(0.074, 14), cheekMat);
+      blush.scale.set(1.28, 0.72, 1);
+      blush.position.set(ex * 1.56, -0.088, 0.345);
       blush.rotation.y = ex < 0 ? -0.35 : 0.35;
-      headGroup.add(happyEye, blush);
+      headGroup.add(eye, glint, glintSub, brow, blush);
     });
 
-    // Bright Cheerful Red Open Smile
-    const happySmile = new THREE.Mesh(new THREE.CircleGeometry(0.065, 14, Math.PI, Math.PI), smileMat);
-    happySmile.position.set(0, -0.078, 0.388);
-    headGroup.add(happySmile);
+    // Cute tiny rounded nose & gentle closed U-smile (matching Image 1!)
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), innerEarMat);
+    nose.scale.set(1.15, 0.82, 0.82);
+    nose.position.set(0, -0.044, 0.405);
+    const gentleSmile = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.010, 6, 14, Math.PI * 0.78), smileMat);
+    gentleSmile.position.set(0, -0.095, 0.388);
+    gentleSmile.rotation.z = Math.PI + 0.11 * Math.PI;
+    headGroup.add(nose, gentleSmile);
 
-    // Radiant Sky-Blue & White Striped Halo behind head with Star Sparkles
+    // Keep an empty hidden headHalo anchor so game.js toggle references remain valid with zero wheel mesh
     const headHalo = new THREE.Group();
-    headHalo.position.set(0, 0.10, -0.26);
-    const haloDisc = new THREE.Mesh(new THREE.CircleGeometry(0.72, 32), haloGlowMat);
-    const haloRim = new THREE.Mesh(
-      new THREE.RingGeometry(0.68, 0.74, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
-    );
-    headHalo.add(haloDisc, haloRim);
-    for (let s = 0; s < 12; s++) {
-      const ang = (s / 12) * Math.PI * 2;
-      const spoke = new THREE.Mesh(new THREE.PlaneGeometry(0.065, 0.66), haloRayMat);
-      spoke.position.set(Math.cos(ang) * 0.36, Math.sin(ang) * 0.36, 0.01);
-      spoke.rotation.z = ang + Math.PI / 2;
-      headHalo.add(spoke);
-    }
-    [[-0.45, 0.45], [0.48, 0.38], [0.05, 0.66], [-0.52, -0.15]].forEach(([sx, sy]) => {
-      const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.055, 0), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      star.scale.set(1, 1, 0.25);
-      star.position.set(sx, sy, 0.04);
-      headHalo.add(star);
-    });
+    headHalo.visible = false;
     headGroup.add(headHalo);
 
     upperBody.add(headGroup);
@@ -5500,11 +6120,11 @@ window.TempleModels3D = {
 
     const posAttr = terrainGeo.attributes.position;
     const colors = [];
-    const jadeMeadow = new THREE.Color(0x7aa36b);
-    const brightMoss = new THREE.Color(0x88a962);
-    const tealPeak = new THREE.Color(0x4b7f6e);
-    const riverBank = new THREE.Color(0x8c8770);
-    const snowCap = new THREE.Color(0xeef4fa);
+    const jadeMeadow = new THREE.Color(0x78b048);
+    const brightMoss = new THREE.Color(0x88ba4e);
+    const tealPeak = new THREE.Color(0x4a7f6a);
+    const riverBank = new THREE.Color(0x889368);
+    const snowCap = new THREE.Color(0xeef5fc);
 
     for (let i = 0; i < posAttr.count; i++) {
       const vx = posAttr.getX(i) - 34; // covers x in [-124, +56]
@@ -5617,7 +6237,35 @@ window.TempleModels3D = {
     summitPlaza.name = 'walkable_ground';
     valleyGroup.add(summitPlaza);
 
-    // Misty Valley Canopy & Pink Blossom Trees framing the Longevity Sanctuary
+    // Misty Valley Canopy, Wildflower Meadow Clusters & Rolling Backdrop Hills framing Longevity Sanctuary
+    const csSpots = [];
+    for (let x = -44; x <= 42; x += 2.8) {
+      for (let z = -34; z <= 42; z += 2.8) {
+        if (Math.abs(x - 12.0) < 4.5) continue;
+        if (Math.abs(z - 4.0) < 5.2 && x < 20) continue;
+        if (x < -46) continue;
+        let skip = false;
+        [...gardenSpurs, ...pondSpurs].forEach((sp) => {
+          if (Math.hypot(x - sp.x, z - sp.z) < 5.0) skip = true;
+        });
+        if (skip) continue;
+        const y = window.GAME_DATA.getChangshouMapTerrainHeight(x, z);
+        if (y < 0.05) continue;
+        csSpots.push({ x, y, z, scale: 0.78 + Math.abs(Math.sin(x * 1.9 + z * 1.3)) * 0.52 });
+      }
+    }
+    this.populateMeadowGrassAndFlowers(valleyGroup, csSpots);
+
+    [
+      { x: -102, z: -30, rx: 38, ry: 34, rz: 36, style: 'thangka_ridge', seed: 2.1 },
+      { x: -106, z: 4, rx: 42, ry: 40, rz: 42, style: 'alpine_peak', seed: 3.4 },
+      { x: -102, z: 38, rx: 38, ry: 34, rz: 36, style: 'thangka_ridge', seed: 4.8 }
+    ].forEach((rm) => {
+      const mMesh = this.createRollingGhibliMountain(rm.rx, rm.ry, rm.rz, rm.seed, rm.style);
+      mMesh.position.set(rm.x, 4, rm.z);
+      valleyGroup.add(mMesh);
+    });
+
     for (let x = -84; x <= 36; x += 12) {
       [-22, 30].forEach((z, zi) => {
         const y = window.GAME_DATA.getChangshouMapTerrainHeight(x, z);
@@ -5789,5 +6437,1054 @@ window.TempleModels3D = {
       }
     };
     return hall;
+  },
+
+  // -------------------- 「瀑布清流」 WATERFALL & WATER TEXTURES --------------------
+  createWaterfallFlowTexture() {
+    if (this._wfFlowTex) return this._wfFlowTex;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 512);
+
+    // Translucent misty pale-cyan veil base
+    const baseGrad = ctx.createLinearGradient(0, 0, 256, 0);
+    baseGrad.addColorStop(0.0, 'rgba(220, 245, 248, 0.0)');
+    baseGrad.addColorStop(0.18, 'rgba(232, 249, 252, 0.55)');
+    baseGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.85)');
+    baseGrad.addColorStop(0.82, 'rgba(232, 249, 252, 0.55)');
+    baseGrad.addColorStop(1.0, 'rgba(220, 245, 248, 0.0)');
+    ctx.fillStyle = baseGrad;
+    ctx.fillRect(0, 0, 256, 512);
+
+    // Silky vertical falling water threads & foam streaks
+    for (let i = 0; i < 85; i++) {
+      const x = 18 + (i * 19 + Math.sin(i * 2.1) * 14 + 220) % 220;
+      const y = (i * 47) % 512;
+      const h = 45 + (i % 6) * 26;
+      const w = 1.5 + (i % 4) * 1.4;
+      const alpha = 0.22 + (i % 5) * 0.13;
+      const sg = ctx.createLinearGradient(0, y, 0, y + h);
+      sg.addColorStop(0, 'rgba(255,255,255,0)');
+      sg.addColorStop(0.35, `rgba(255,255,255,${alpha})`);
+      sg.addColorStop(0.75, `rgba(235,252,255,${alpha})`);
+      sg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sg;
+      ctx.fillRect(x, y, w, h);
+      if (y + h > 512) {
+        ctx.fillRect(x, y - 512, w, h);
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 2.2);
+    this._wfFlowTex = tex;
+    return tex;
+  },
+
+  createEmeraldWaterTexture() {
+    if (this._emeraldWaterTex) return this._emeraldWaterTex;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const bg = ctx.createRadialGradient(128, 128, 20, 128, 128, 130);
+    bg.addColorStop(0, '#2c6b61');
+    bg.addColorStop(0.6, '#1e5049');
+    bg.addColorStop(1, '#143833');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 256, 256);
+
+    for (let i = 0; i < 65; i++) {
+      const rx = (i * 37 + Math.sin(i * 1.3) * 25 + 256) % 256;
+      const ry = (i * 53 + Math.cos(i * 1.7) * 20 + 256) % 256;
+      ctx.strokeStyle = i % 3 === 0 ? 'rgba(180, 235, 222, 0.16)' : 'rgba(95, 165, 148, 0.20)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, 14 + (i % 5) * 6, 3.5 + (i % 3) * 1.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 3);
+    this._emeraldWaterTex = tex;
+    return tex;
+  },
+
+  createMossyBoulderTexture() {
+    if (this._mossyBoulderTex) return this._mossyBoulderTex;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // High-value neutral base so vertexColors control hue without muddying shadows
+    ctx.fillStyle = '#dcded9';
+    ctx.fillRect(0, 0, 512, 512);
+
+    // Subtle sedimentary stone bands & natural mottled mineral variation
+    let s = 918273;
+    const nextR = () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+    for (let y = 0; y < 512; y += 6) {
+      const shade = 205 + Math.floor(nextR() * 40);
+      ctx.fillStyle = `rgba(${shade}, ${shade + 2}, ${shade - 3}, 0.28)`;
+      ctx.fillRect(0, y, 512, 2 + Math.floor(nextR() * 4));
+    }
+
+    // Crisp micro mineral speckles & soft moss tuft stipple
+    for (let i = 0; i < 4200; i++) {
+      const x = nextR() * 512;
+      const y = nextR() * 512;
+      const r = 0.8 + nextR() * 2.6;
+      const tone = nextR();
+      if (tone < 0.34) {
+        ctx.fillStyle = 'rgba(130, 134, 126, 0.35)';
+      } else if (tone < 0.72) {
+        ctx.fillStyle = 'rgba(245, 248, 242, 0.32)';
+      } else {
+        ctx.fillStyle = 'rgba(182, 188, 175, 0.28)';
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Fine damp micro-fissures across stone facets
+    ctx.lineWidth = 1.2;
+    for (let c = 0; c < 48; c++) {
+      let cx = nextR() * 512;
+      let cy = nextR() * 512;
+      ctx.strokeStyle = 'rgba(92, 96, 88, 0.34)';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      for (let st = 0; st < 5; st++) {
+        cx += (nextR() - 0.5) * 34;
+        cy += (nextR() - 0.45) * 26;
+        ctx.lineTo(cx, cy);
+      }
+      ctx.stroke();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 2);
+    if (THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    this._mossyBoulderTex = tex;
+    return tex;
+  },
+
+  createRockBumpTexture() {
+    if (this._rockBumpTex) return this._rockBumpTex;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 256, 256);
+
+    let s = 482719;
+    const nextR = () => {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      return s / 4294967296;
+    };
+    for (let i = 0; i < 3000; i++) {
+      const x = nextR() * 256;
+      const y = nextR() * 256;
+      const rad = 0.9 + nextR() * 3.8;
+      const v = Math.floor(65 + nextR() * 160);
+      ctx.fillStyle = `rgba(${v},${v},${v},0.35)`;
+      ctx.beginPath();
+      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 2);
+    this._rockBumpTex = tex;
+    return tex;
+  },
+
+  // -------------------- WEST MOUNTAIN FOREST TRAIL TO 「瀑布清流」 (ON THE WAY TO 七佛殿) --------------------
+  createWestWaterfallTrailModel() {
+    const group = new THREE.Group();
+    const GD = window.GAME_DATA;
+    const WF = (GD && GD.WATERFALL_SANCTUARY_DATA) || {
+      junctionPos: { x: -45.5, z: 10.5 },
+      grovePos: { x: -41.5, z: 47.0 }
+    };
+
+    const slateMat = new THREE.MeshStandardMaterial({ color: 0x6f7572, roughness: 0.88 });
+    const mossStoneMat = new THREE.MeshStandardMaterial({ color: 0x48663d, roughness: 0.92 });
+    const cedarMat = new THREE.MeshStandardMaterial({ color: 0x5c3c24, roughness: 0.86 });
+    const darkRoofMat = new THREE.MeshStandardMaterial({ color: 0x3b4248, roughness: 0.72 });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffd978 });
+
+    // Stepping stone path leading from Seven-Buddha Stairway South spur (z=6.2) into circled grove (z=47.0)
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const sx = -45.5 + t * 4.0 + Math.sin(t * Math.PI * 1.8) * 1.1;
+      const sz = 6.5 + t * 40.5;
+      const sy = GD.getTerrainHeight ? GD.getTerrainHeight(sx, sz) : 4.0;
+      const slab = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.15, 1.32, 0.18, 9),
+        i % 3 === 0 ? mossStoneMat : slateMat
+      );
+      slab.scale.set(1.25, 1.0, 0.88);
+      slab.position.set(sx, sy + 0.05, sz);
+      slab.rotation.y = i * 0.45;
+      slab.receiveShadow = true;
+      slab.name = 'walkable_ground';
+      group.add(slab);
+
+      if (i % 3 === 1) {
+        [-1.65, 1.65].forEach((ox) => {
+          const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.45, 0), mossStoneMat);
+          const ry = GD.getTerrainHeight ? GD.getTerrainHeight(sx + ox, sz) : sy;
+          rock.scale.set(1.1, 0.65, 1.0);
+          rock.position.set(sx + ox, ry + 0.16, sz);
+          group.add(rock);
+        });
+      }
+    }
+
+    // Carved Wooden Signpost Builder reading 「瀑布清流」
+    const buildWaterfallSignpost = (wx, wz, rotY, isGroveEntrance) => {
+      const wy = GD.getTerrainHeight ? GD.getTerrainHeight(wx, wz) : 4.0;
+      const postGrp = new THREE.Group();
+      postGrp.position.set(wx, wy, wz);
+      postGrp.rotation.y = rotY;
+
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.35, 0.24), cedarMat);
+      post.position.set(0, 1.18, 0);
+      post.castShadow = true;
+      postGrp.add(post);
+
+      const boardCanvas = document.createElement('canvas');
+      boardCanvas.width = 512;
+      boardCanvas.height = 192;
+      const bCtx = boardCanvas.getContext('2d');
+      bCtx.fillStyle = '#4a2f1a';
+      bCtx.fillRect(0, 0, 512, 192);
+      bCtx.strokeStyle = '#e8b954';
+      bCtx.lineWidth = 8;
+      bCtx.strokeRect(8, 8, 496, 176);
+      bCtx.fillStyle = '#fff3cf';
+      bCtx.font = 'bold 78px "Microsoft YaHei", "SimHei", sans-serif';
+      bCtx.textAlign = 'center';
+      bCtx.textBaseline = 'middle';
+      bCtx.fillText('🌊 瀑布清流', 256, 80);
+      bCtx.fillStyle = '#bfead9';
+      bCtx.font = 'bold 28px Arial, sans-serif';
+      bCtx.fillText(isGroveEntrance ? 'CLICK TO MEDITATE · WATERFALL' : 'TO WATERFALL TRAIL →', 256, 146);
+      const boardTex = new THREE.CanvasTexture(boardCanvas);
+      if (THREE.SRGBColorSpace) boardTex.colorSpace = THREE.SRGBColorSpace;
+
+      const board = new THREE.Mesh(
+        new THREE.BoxGeometry(1.95, 0.78, 0.14),
+        new THREE.MeshBasicMaterial({ map: boardTex })
+      );
+      board.position.set(0, 1.72, 0.12);
+      board.userData.waterfallSignpost = true;
+      postGrp.add(board);
+
+      // Sloped miniature tile roof atop the wooden signpost
+      const capL = new THREE.Mesh(new THREE.BoxGeometry(2.22, 0.10, 0.56), darkRoofMat);
+      capL.position.set(0, 2.26, 0.10);
+      capL.rotation.x = 0.26;
+      const capR = new THREE.Mesh(new THREE.BoxGeometry(2.22, 0.10, 0.56), darkRoofMat);
+      capR.position.set(0, 2.26, -0.10);
+      capR.rotation.x = -0.26;
+      postGrp.add(capL, capR);
+
+      // Warm Wooden Lattice Trailhead Lantern beside the signpost
+      const lanBase = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.72, 0.36), cedarMat);
+      lanBase.position.set(1.25, 0.36, 0.25);
+      const lanCore = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.42, 0.28), glowMat);
+      lanCore.position.set(1.25, 0.40, 0.25);
+      postGrp.add(lanBase, lanCore);
+
+      if (isGroveEntrance) {
+        // Serene emerald brook & mossy rock gateway behind the circled grove signpost
+        const poolDisc = new THREE.Mesh(
+          new THREE.CircleGeometry(3.1, 20),
+          new THREE.MeshLambertMaterial({ color: 0x2a7b6f, transparent: true, opacity: 0.88 })
+        );
+        poolDisc.rotation.x = -Math.PI / 2;
+        poolDisc.position.set(0, 0.08, 3.8);
+        postGrp.add(poolDisc);
+
+        const wfSheet = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.2, 4.6),
+          new THREE.MeshBasicMaterial({
+            map: this.createWaterfallFlowTexture(),
+            transparent: true,
+            opacity: 0.88,
+            side: THREE.DoubleSide
+          })
+        );
+        wfSheet.position.set(0, 2.4, 6.2);
+        const cliff = new THREE.Mesh(new THREE.DodecahedronGeometry(3.2, 0), slateMat);
+        cliff.scale.set(1.4, 1.3, 0.9);
+        cliff.position.set(0, 2.2, 7.2);
+        postGrp.add(wfSheet, cliff);
+      }
+
+      postGrp.traverse((child) => {
+        child.userData.waterfallSignpost = true;
+      });
+      group.add(postGrp);
+    };
+
+    buildWaterfallSignpost(WF.junctionPos.x, WF.junctionPos.z, 0.2, false);
+    buildWaterfallSignpost(WF.grovePos.x, WF.grovePos.z, Math.PI, true);
+
+    return group;
+  },
+
+  // -------------------- FULL 3D 「瀑布清流」 ZEN WATERFALL SANCTUARY SCENE (MATCHING IMAGE 2) --------------------
+  createWaterfallSanctuarySceneModel() {
+    const root = new THREE.Group();
+
+    const cedarDark = new THREE.MeshStandardMaterial({ color: 0x4b3523, roughness: 0.84 });
+    const cedarWarm = new THREE.MeshStandardMaterial({ color: 0x6b4b2f, roughness: 0.80 });
+    const tileMat = new THREE.MeshStandardMaterial({ color: 0x434d52, roughness: 0.62, metalness: 0.15 });
+    const shojiGlowMat = new THREE.MeshStandardMaterial({
+      color: 0xfff3d4,
+      emissive: 0xffd584,
+      emissiveIntensity: 0.55,
+      roughness: 0.9
+    });
+    const cliffRockMat = new THREE.MeshStandardMaterial({ color: 0x3b4039, roughness: 0.95 });
+    const mossyBoulderMat = new THREE.MeshStandardMaterial({
+      map: this.createMossyBoulderTexture(),
+      bumpMap: this.createRockBumpTexture(),
+      bumpScale: 0.06,
+      roughness: 0.88,
+      metalness: 0.04,
+      vertexColors: true
+    });
+    const wetCliffMat = new THREE.MeshStandardMaterial({
+      map: this.createMossyBoulderTexture(),
+      bumpMap: this.createRockBumpTexture(),
+      bumpScale: 0.075,
+      roughness: 0.78,
+      metalness: 0.08,
+      vertexColors: true
+    });
+    const mossVelvetMat = new THREE.MeshStandardMaterial({
+      map: this.createRockBumpTexture(),
+      bumpMap: this.createRockBumpTexture(),
+      bumpScale: 0.04,
+      color: 0x2b4b17,
+      roughness: 0.96
+    });
+    const mossVelvetSunMat = new THREE.MeshStandardMaterial({
+      map: this.createRockBumpTexture(),
+      bumpMap: this.createRockBumpTexture(),
+      bumpScale: 0.04,
+      color: 0x3d6221,
+      roughness: 0.94
+    });
+    const wetCobbleMat = new THREE.MeshStandardMaterial({
+      map: this.createMossyBoulderTexture(),
+      bumpMap: this.createRockBumpTexture(),
+      bumpScale: 0.045,
+      color: 0x272d2a,
+      roughness: 0.32,
+      metalness: 0.16
+    });
+    const fernCanvas = document.createElement('canvas');
+    fernCanvas.width = 128;
+    fernCanvas.height = 256;
+    const fCtx = fernCanvas.getContext('2d');
+    fCtx.clearRect(0, 0, 128, 256);
+    fCtx.strokeStyle = '#2d4f1c';
+    fCtx.lineWidth = 3;
+    fCtx.beginPath();
+    fCtx.moveTo(64, 250);
+    fCtx.quadraticCurveTo(66, 125, 64, 10);
+    fCtx.stroke();
+    for (let p = 0; p < 15; p++) {
+      const py = 232 - p * 14.5;
+      const span = Math.sin((p / 14) * Math.PI * 0.92 + 0.2) * 52 + 6;
+      [-1, 1].forEach((dir) => {
+        fCtx.fillStyle = p % 2 === 0 ? '#3a6621' : '#4a7a2b';
+        fCtx.beginPath();
+        fCtx.ellipse(64 + dir * span * 0.52, py - 2, span * 0.52, 4.4 - p * 0.14, dir * -0.26, 0, Math.PI * 2);
+        fCtx.fill();
+      });
+    }
+    const fernTex = new THREE.CanvasTexture(fernCanvas);
+    if (THREE.SRGBColorSpace) fernTex.colorSpace = THREE.SRGBColorSpace;
+    const fernFrondMat = new THREE.MeshStandardMaterial({
+      map: fernTex,
+      transparent: true,
+      alphaTest: 0.25,
+      roughness: 0.78,
+      side: THREE.DoubleSide
+    });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x1e2022, roughness: 0.55, metalness: 0.65 });
+    const ceramicCupMat = new THREE.MeshStandardMaterial({ color: 0x9aa98f, roughness: 0.35 });
+    const lanternGlowMat = new THREE.MeshBasicMaterial({ color: 0xffd269 });
+
+    // Sculpted, Vertex-Colored Mossy River Boulder & Stratified Cliff Helper
+    const createSculptedMossyBoulder = (rx, ry, rz, seed = 1, mossCoverage = 0.62, isCliff = false) => {
+      const grp = new THREE.Group();
+      const segW = isCliff ? 24 : 28;
+      const segH = isCliff ? 18 : 22;
+      const geo = new THREE.SphereGeometry(1.0, segW, segH);
+      const posAttr = geo.attributes && geo.attributes.position;
+
+      const s1 = seed * 1.73;
+      const s2 = seed * 2.91;
+      const s3 = seed * 4.17;
+
+      if (posAttr && posAttr.count > 4) {
+        const count = posAttr.count;
+        const nVal = new Float32Array(count);
+        for (let i = 0; i < count; i++) {
+          const vx = posAttr.getX(i);
+          const vy = posAttr.getY(i);
+          const vz = posAttr.getZ(i);
+          const len = Math.hypot(vx, vy, vz) || 1;
+          const ux = vx / len;
+          const uy = vy / len;
+          const uz = vz / len;
+
+          const n1 = Math.sin(ux * 2.4 + s1) * Math.cos(uz * 2.2 + s2) * 0.14 +
+                     Math.cos(uy * 2.7 + ux * 1.9 + s3) * 0.10;
+          const n2 = Math.sin(ux * 5.2 + uy * 3.8 + s2) * Math.sin(uz * 4.9 - ux * 2.4 + s1) * 0.068;
+          const n3 = Math.cos(uy * 9.5 + ux * 4.2 + s3) * 0.028;
+          const shelf = isCliff ? Math.sin(uy * 7.6 + ux * 2.1 + s1) * 0.065 : 0;
+
+          const disp = 1.0 + n1 + n2 + n3 + shelf;
+          nVal[i] = n1 + n2;
+
+          const flare = uy < 0.12 ? 1.0 + Math.min(0.15, (0.12 - uy) * 0.22) : 1.0;
+          let dx = ux * disp * flare;
+          let dy = uy * disp;
+          let dz = uz * disp * flare;
+
+          if (!isCliff && dy > 0.20) {
+            dy = 0.20 + (dy - 0.20) * 0.56;
+          }
+          if (dy < -0.58) {
+            dy = -0.58 + (dy + 0.58) * 0.45;
+          }
+          posAttr.setXYZ(i, dx, dy, dz);
+        }
+        geo.computeVertexNormals();
+
+        const normAttr = geo.attributes && geo.attributes.normal;
+        const colors = new Float32Array(count * 3);
+        const thresh = 0.95 - mossCoverage;
+
+        for (let i = 0; i < count; i++) {
+          const dx = posAttr.getX(i);
+          const dy = posAttr.getY(i);
+          const dz = posAttr.getZ(i);
+          const ny = normAttr ? Math.max(-1, Math.min(1, normAttr.getY(i))) : dy;
+
+          const nSurf = Math.sin(dx * 5.8 + dz * 4.9 + s1) * 0.5 + Math.cos(dy * 7.2 - dx * 4.3 + s2) * 0.5;
+          const micro = Math.sin(dx * 13.0 + dy * 11.0 + dz * 9.0 + s3);
+          const wet = Math.max(0, Math.min(1, (-dy + 0.06) * 1.5));
+          const crevice = Math.max(0.62, Math.min(1.10, 0.88 + nVal[i] * 1.15));
+
+          // Exposed grey granite/slate rock facets & wet waterline stone
+          const mineralVar = 0.44 + (nSurf * 0.08 + micro * 0.035);
+          let rSt = mineralVar * 0.96 * crevice;
+          let gSt = mineralVar * 0.97 * crevice;
+          let bSt = mineralVar * 0.94 * crevice;
+
+          // Dark wet stone band near waterline
+          rSt = rSt * (1 - wet * 0.60) + 0.14 * (wet * 0.60);
+          gSt = gSt * (1 - wet * 0.56) + 0.17 * (wet * 0.56);
+          bSt = bSt * (1 - wet * 0.58) + 0.16 * (wet * 0.58);
+
+          // Continuous deep velvet moss gripping upward rock tops & damp crevices
+          const mossField = ny * 0.66 + (dy * 0.48 + 0.22) * 0.34 + nSurf * 0.25 + micro * 0.06;
+          const mLin = Math.max(0, Math.min(1, (mossField - thresh) / 0.22));
+          const m = mLin * mLin * (3 - 2 * mLin);
+
+          if (m > 0.005) {
+            const sunTip = Math.max(0, Math.min(1, ny * 0.60 + nSurf * 0.28 + 0.08));
+            const rMoss = 0.095 + sunTip * 0.145 + micro * 0.018;
+            const gMoss = 0.195 + sunTip * 0.215 + micro * 0.025;
+            const bMoss = 0.048 + sunTip * 0.065;
+            const edgeRim = 1.0 - 0.22 * Math.sin(m * Math.PI);
+            colors[i * 3] = (rSt * (1 - m) + rMoss * m) * edgeRim;
+            colors[i * 3 + 1] = (gSt * (1 - m) + gMoss * m) * edgeRim;
+            colors[i * 3 + 2] = (bSt * (1 - m) + bMoss * m) * edgeRim;
+          } else {
+            colors[i * 3] = rSt;
+            colors[i * 3 + 1] = gSt;
+            colors[i * 3 + 2] = bSt;
+          }
+        }
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      }
+
+      const rockMesh = new THREE.Mesh(geo, isCliff ? wetCliffMat : mossyBoulderMat);
+      rockMesh.scale.set(rx, ry, rz);
+      rockMesh.receiveShadow = true;
+      rockMesh.castShadow = !isCliff;
+      grp.add(rockMesh);
+
+      // Soft sunken velvet moss cushions on lush boulders (organic pillow contours, never flat plates)
+      if (!isCliff && mossCoverage >= 0.44) {
+        const tuftCount = rx > 1.2 ? 3 : 2;
+        for (let ti = 0; ti < tuftCount; ti++) {
+          const ang = s1 + ti * 2.25;
+          const dist = 0.16 + (ti % 2) * 0.14;
+          const tuft = new THREE.Mesh(
+            new THREE.SphereGeometry(0.28, 12, 10),
+            (ti + Math.floor(seed)) % 2 === 0 ? mossVelvetMat : mossVelvetSunMat
+          );
+          tuft.scale.set(rx * 0.34, ry * 0.14, rz * 0.32);
+          tuft.position.set(
+            Math.cos(ang) * rx * dist,
+            ry * (0.47 - dist * 0.20),
+            Math.sin(ang) * rz * dist
+          );
+          tuft.rotation.set(Math.sin(ang) * 0.12, ang, Math.cos(ang) * 0.10);
+          grp.add(tuft);
+        }
+      }
+      return grp;
+    };
+
+    const createWatersideFernCluster = (fx, fy, fz, scale = 1.0, seed = 0) => {
+      const fGrp = new THREE.Group();
+      fGrp.position.set(fx, fy, fz);
+      fGrp.scale.set(scale, scale, scale);
+      const count = 8;
+      for (let i = 0; i < count; i++) {
+        const yaw = (i / count) * Math.PI * 2 + seed * 0.9;
+        const blade = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.72, 1, 3), fernFrondMat);
+        blade.position.set(Math.cos(yaw) * 0.24, 0.22, Math.sin(yaw) * 0.24);
+        blade.rotation.order = 'YXZ';
+        blade.rotation.y = yaw;
+        blade.rotation.x = 0.65 + (i % 3) * 0.18;
+        fGrp.add(blade);
+      }
+      return fGrp;
+    };
+
+    // 1. MISTY CANYON VALLEY BACKDROP & FOREST SKY DOME
+    const gorgeFloor = new THREE.Mesh(new THREE.BoxGeometry(44, 0.5, 44), cliffRockMat);
+    gorgeFloor.position.set(0, -0.35, 0);
+    gorgeFloor.receiveShadow = true;
+    root.add(gorgeFloor);
+
+    // Warm sunlit mist backdrop behind the cliff waterfall
+    const backdropMist = new THREE.Mesh(
+      new THREE.PlaneGeometry(36, 22),
+      new THREE.MeshBasicMaterial({ color: 0xd9ecd2, transparent: true, opacity: 0.72, side: THREE.DoubleSide })
+    );
+    backdropMist.position.set(1.5, 9.5, -14.5);
+    root.add(backdropMist);
+
+    // 2. EMERALD-JADE PLUNGE POOL & GOLDEN LANTERN WATER SHIMMER
+    const waterGeo = new THREE.PlaneGeometry(24, 20);
+    const waterMat = new THREE.MeshStandardMaterial({
+      map: this.createEmeraldWaterTexture(),
+      color: 0x3b8a7a,
+      roughness: 0.16,
+      metalness: 0.32,
+      transparent: true,
+      opacity: 0.92
+    });
+    const poolWater = new THREE.Mesh(waterGeo, waterMat);
+    poolWater.rotation.x = -Math.PI / 2;
+    poolWater.position.set(0.8, 0.08, -0.8);
+    poolWater.receiveShadow = true;
+    root.add(poolWater);
+
+    // Subtle golden reflection ribbons across the water below the wooden lanterns
+    const refMat = new THREE.MeshBasicMaterial({
+      color: 0xffd275,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false
+    });
+    [[-3.0, 2.1], [-2.7, -1.2], [-2.5, -3.5]].forEach(([rx, rz]) => {
+      const ref = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 2.1), refMat);
+      ref.rotation.x = -Math.PI / 2;
+      ref.position.set(rx + 0.35, 0.10, rz);
+      root.add(ref);
+    });
+
+    // 3. LEFT WOODEN ZEN TEMPLE PAVILION, CURVED TILED ROOFS & WATERSIDE VERANDA DECK
+    const pavilion = new THREE.Group();
+    pavilion.position.set(-6.05, 0, -1.35);
+
+    // Waterside timber deck cantilevered over the jade pool + pilings
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.24, 9.8), cedarWarm);
+    deck.position.set(1.55, 0.88, 0.65);
+    deck.receiveShadow = true;
+    pavilion.add(deck);
+
+    for (let pz = -3.8; pz <= 5.0; pz += 2.2) {
+      [0.4, 4.1].forEach((px) => {
+        const piling = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.35, 8), cedarDark);
+        piling.position.set(px - 1.1, 0.35, pz);
+        pavilion.add(piling);
+      });
+    }
+
+    // Perimeter low wooden railing along waterside deck
+    const railPost = (rx, rz) => {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.72, 0.11), cedarDark);
+      p.position.set(rx, 1.34, rz);
+      pavilion.add(p);
+    };
+    const topRailFront = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 5.2), cedarWarm);
+    topRailFront.position.set(4.25, 1.66, -1.65);
+    pavilion.add(topRailFront);
+    for (let rz = -4.0; rz <= 0.8; rz += 1.2) railPost(4.25, rz);
+
+    // Wooden entrance steps leading down from veranda to mossy waterside rocks
+    for (let st = 0; st < 4; st++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.18, 2.2), cedarWarm);
+      step.position.set(1.65 + st * 0.38, 0.82 - st * 0.18, 2.85 + st * 0.18);
+      pavilion.add(step);
+    }
+
+    // Main Pavilion Cedar Frame & Glowing Lattice Shoji Screens
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(3.8, 3.6, 7.6), cedarDark);
+    backWall.position.set(-0.2, 2.7, -0.6);
+    pavilion.add(backWall);
+
+    const addShojiWithLattice = (sz, widthZ, heightY, centerY) => {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(0.12, heightY, widthZ), shojiGlowMat);
+      panel.position.set(1.74, centerY, sz);
+      pavilion.add(panel);
+      // Fine cedar horizontal & vertical lattice muntins over the shoji paper
+      for (let h = -heightY * 0.4; h <= heightY * 0.42; h += heightY * 0.2) {
+        const barH = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, widthZ), cedarDark);
+        barH.position.set(1.76, centerY + h, sz);
+        pavilion.add(barH);
+      }
+      for (let v = -widthZ * 0.36; v <= widthZ * 0.38; v += widthZ * 0.24) {
+        const barV = new THREE.Mesh(new THREE.BoxGeometry(0.16, heightY, 0.045), cedarDark);
+        barV.position.set(1.76, centerY, sz + v);
+        pavilion.add(barV);
+      }
+    };
+    addShojiWithLattice(-2.55, 2.1, 2.45, 2.38);
+    addShojiWithLattice(0.85, 1.8, 2.45, 2.38);
+    addShojiWithLattice(-0.75, 1.3, 2.28, 2.28);
+
+    [-3.7, -1.65, -0.05, 1.85, 3.15].forEach((cz) => {
+      const col = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.45, 0.22), cedarDark);
+      col.position.set(2.45, 2.65, cz);
+      col.castShadow = true;
+      pavilion.add(col);
+    });
+
+    // Sweeping Curved Karahafu Entrance Porch Roof & Upper Gable Roof
+    const lowerRoofE = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.16, 8.6), tileMat);
+    lowerRoofE.position.set(1.85, 4.18, -0.55);
+    lowerRoofE.rotation.z = -0.22;
+    lowerRoofE.castShadow = true;
+    const karahafuArch = new THREE.Mesh(new THREE.CylinderGeometry(1.45, 1.45, 2.2, 14, 1, false, 0, Math.PI), tileMat);
+    karahafuArch.rotation.z = Math.PI / 2;
+    karahafuArch.rotation.y = Math.PI / 2;
+    karahafuArch.scale.set(1.0, 0.42, 1.12);
+    karahafuArch.position.set(2.35, 4.22, 1.15);
+    const upperRoof = new THREE.Mesh(new THREE.ConeGeometry(5.3, 2.5, 4), tileMat);
+    upperRoof.rotation.y = Math.PI / 4;
+    upperRoof.scale.set(0.95, 1.0, 1.38);
+    upperRoof.position.set(0.3, 6.0, -0.6);
+    upperRoof.castShadow = true;
+    pavilion.add(lowerRoofE, karahafuArch, upperRoof);
+    root.add(pavilion);
+
+    // 4. 5 WARM WOODEN LATTICE ZEN LANTERNS CASTING GOLDEN GLOW
+    const lanternLights = [];
+    const buildLatticeLantern = (lx, ly, lz, scale = 1.0) => {
+      const lg = new THREE.Group();
+      lg.position.set(lx, ly, lz);
+      lg.scale.set(scale, scale, scale);
+      const core = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.50, 0.28), lanternGlowMat);
+      lg.add(core);
+      [[-0.17, -0.17], [0.17, -0.17], [-0.17, 0.17], [0.17, 0.17]].forEach(([px, pz]) => {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.64, 0.055), cedarDark);
+        post.position.set(px, 0, pz);
+        lg.add(post);
+      });
+      const basePlate = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.42), cedarDark);
+      basePlate.position.y = -0.30;
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.46), cedarDark);
+      cap.position.y = 0.32;
+      lg.add(basePlate, cap);
+      const pt = new THREE.PointLight(0xffb84d, 0.92, 8.0);
+      pt.position.set(0, 0.12, 0);
+      lg.add(pt);
+      lanternLights.push(pt);
+      root.add(lg);
+    };
+    buildLatticeLantern(-3.95, 0.72, 2.75, 1.05);
+    buildLatticeLantern(-3.95, 1.18, 1.35, 0.92);
+    buildLatticeLantern(-3.25, 1.24, -1.25, 0.92);
+    buildLatticeLantern(-3.05, 1.24, -3.75, 0.92);
+    buildLatticeLantern(-3.55, 3.35, -1.95, 0.85);
+
+    // 5. TOWERING MOSSY SLATE CLIFFS & MULTI-LAYERED ANIMATED WATERFALL (CENTER-RIGHT)
+    const cliffSpecs = [
+      // Main back waterfall cliff & deeply recessed gorge shelves
+      { x: 2.2, y: 5.8, z: -9.0, sx: 4.6, sy: 6.4, sz: 2.3, moss: 0.38 },
+      { x: -2.2, y: 5.4, z: -8.1, sx: 3.5, sy: 5.9, sz: 2.5, moss: 0.48 },
+      { x: 7.4, y: 6.0, z: -7.5, sx: 3.9, sy: 6.5, sz: 2.9, moss: 0.44 },
+      { x: 9.6, y: 4.8, z: -2.0, sx: 3.4, sy: 5.3, sz: 4.6, moss: 0.42 },
+      { x: 10.2, y: 4.3, z: 3.4, sx: 3.1, sy: 4.7, sz: 4.2, moss: 0.45 },
+      { x: 7.5, y: 1.5, z: -4.2, sx: 2.5, sy: 1.9, sz: 2.6, moss: 0.48 },
+      // Craggy mossy slate rock buttresses & broad stratified ledges immediately flanking the waterfall
+      { x: -0.75, y: 1.50, z: -8.15, sx: 2.95, sy: 1.95, sz: 2.05, moss: 0.48 },
+      { x: -1.55, y: 2.65, z: -8.65, sx: 3.35, sy: 2.75, sz: 2.15, moss: 0.52 },
+      { x: 4.95, y: 1.80, z: -7.75, sx: 2.85, sy: 1.95, sz: 2.05, moss: 0.46 },
+      { x: 5.55, y: 3.25, z: -8.15, sx: 3.15, sy: 2.35, sz: 2.15, moss: 0.50 },
+      { x: 0.45, y: 0.85, z: -6.35, sx: 1.25, sy: 1.05, sz: 1.15, moss: 0.36 },
+      { x: 3.95, y: 0.90, z: -6.25, sx: 1.35, sy: 1.10, sz: 1.20, moss: 0.38 }
+    ];
+    cliffSpecs.forEach((cf, idx) => {
+      const cliffRock = createSculptedMossyBoulder(cf.sx, cf.sy, cf.sz, 11.3 + idx * 1.7, cf.moss, true);
+      cliffRock.position.set(cf.x, cf.y, cf.z);
+      cliffRock.rotation.y = idx * 0.65;
+      root.add(cliffRock);
+    });
+    // Cliffside lush ferns beside the waterfall rock ledges
+    [[-1.35, 3.0, -6.2, 1.3], [-0.45, 1.45, -6.1, 1.05], [4.55, 2.9, -6.1, 1.25], [5.45, 4.4, -6.0, 1.35]].forEach(([fx, fy, fz, sc], i) => {
+      root.add(createWatersideFernCluster(fx, fy, fz, sc, i + 1));
+    });
+
+    // Animated Multi-Layer White Ribbon Waterfall + Flowing UV Textures
+    const waterfallStrips = [];
+    [
+      { w: 2.55, h: 10.6, x: 2.2, y: 5.3, z: -6.35, speed: 1.35, op: 0.92 },
+      { w: 2.05, h: 10.5, x: 2.25, y: 5.25, z: -6.15, speed: 1.85, op: 0.78 },
+      { w: 1.45, h: 10.4, x: 2.15, y: 5.2, z: -6.02, speed: 2.25, op: 0.68 }
+    ].forEach((wf) => {
+      const baseTex = this.createWaterfallFlowTexture();
+      const tex = typeof baseTex.clone === 'function' ? baseTex.clone() : baseTex;
+      tex.needsUpdate = true;
+      const strip = new THREE.Mesh(
+        new THREE.PlaneGeometry(wf.w, wf.h, 4, 12),
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          transparent: true,
+          opacity: wf.op,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        })
+      );
+      strip.position.set(wf.x, wf.y, wf.z);
+      strip.userData.scrollSpeed = wf.speed;
+      root.add(strip);
+      waterfallStrips.push(strip);
+    });
+
+    // Plunge-Pool Spray Mist Puffs, Pool Splash Rings & Falling Water Droplets
+    const mistPuffs = [];
+    const mistMat = new THREE.MeshBasicMaterial({ color: 0xf4fbfc, transparent: true, opacity: 0.42, depthWrite: false });
+    for (let mi = 0; mi < 22; mi++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(0.65 + (mi % 4) * 0.25, 8, 6), mistMat.clone());
+      const px = 0.6 + (mi / 22) * 3.2 + Math.sin(mi * 1.9) * 0.5;
+      const pz = -5.8 + Math.cos(mi * 2.3) * 0.85;
+      puff.scale.set(1.4, 0.68, 1.15);
+      puff.position.set(px, 0.45 + (mi % 3) * 0.28, pz);
+      puff.userData = { baseX: px, baseY: 0.45 + (mi % 3) * 0.22, baseZ: pz, phase: mi * 0.55 };
+      root.add(puff);
+      mistPuffs.push(puff);
+    }
+
+    const poolRipples = [];
+    for (let ri = 0; ri < 4; ri++) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.75, 0.92, 24),
+        new THREE.MeshBasicMaterial({ color: 0xdff8f5, transparent: true, opacity: 0.48, side: THREE.DoubleSide, depthWrite: false })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(2.2, 0.11, -5.75);
+      ring.userData.phase = ri * 0.25;
+      root.add(ring);
+      poolRipples.push(ring);
+    }
+
+    const waterDrops = [];
+    const dropGeo = new THREE.SphereGeometry(0.055, 6, 4);
+    const dropMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.72 });
+    for (let di = 0; di < 40; di++) {
+      const drop = new THREE.Mesh(dropGeo, dropMat);
+      drop.position.set(1.1 + (di % 10) * 0.24, (di % 8) * 1.3, -6.1 + (di % 3) * 0.2);
+      drop.userData = { baseX: 1.15 + ((di * 7) % 10) * 0.22, phase: di * 0.31, speed: 0.65 + (di % 4) * 0.18 };
+      root.add(drop);
+      waterDrops.push(drop);
+    }
+
+    // 6. SCULPTED MOSS-DRAPED WATERSIDE BOULDERS, WET STREAM COBBLES & LOWER-RIGHT CASCADING BROOK
+    // (x, y, z, rx, ry, rz, mossCoverage)
+    const shoreStones = [
+      // Left foreground stone terrace beneath tea table & meditation mat (weathered flat-topped river slabs)
+      [-2.15, 0.24, 5.05, 2.15, 0.42, 1.85, 0.48],
+      [-0.55, 0.24, 4.55, 1.75, 0.40, 1.65, 0.42],
+      [-3.15, 0.36, 3.35, 1.12, 0.60, 1.02, 0.56],
+      [-3.55, 0.42, 1.95, 1.05, 0.58, 0.98, 0.54],
+      [-2.65, 0.26, 2.55, 0.86, 0.44, 0.78, 0.50],
+      [-1.75, 0.20, 3.35, 0.82, 0.38, 0.74, 0.46],
+      // Stepped mossy boulders curving cleanly around the right pond edge
+      [0.45, 0.24, 4.45, 0.96, 0.48, 0.88, 0.52],
+      [1.18, 0.28, 3.65, 0.92, 0.52, 0.84, 0.54],
+      [1.92, 0.20, 2.75, 0.86, 0.44, 0.82, 0.48],
+      [3.35, 0.22, 1.95, 0.96, 0.48, 0.88, 0.50],
+      [4.55, 0.32, 1.35, 1.18, 0.62, 1.04, 0.54],
+      [5.55, 0.38, 0.25, 1.32, 0.72, 1.22, 0.52],
+      // Left-bank boulders bordering the lower-right brook spillway
+      [1.35, 0.18, 5.45, 1.04, 0.48, 0.92, 0.52],
+      [1.75, 0.14, 4.55, 0.82, 0.38, 0.78, 0.48],
+      [2.15, 0.12, 6.25, 1.05, 0.45, 0.95, 0.50],
+      [0.55, 0.16, 6.35, 1.12, 0.46, 0.98, 0.54],
+      // Right-bank & mid-stream stepping boulders partially submerged in the cascading brook
+      [4.55, 0.24, 2.75, 1.12, 0.56, 0.98, 0.54],
+      [4.85, 0.22, 4.15, 1.18, 0.55, 1.05, 0.52],
+      [5.15, 0.20, 5.65, 1.25, 0.58, 1.12, 0.50],
+      [3.15, 0.08, 3.45, 0.64, 0.28, 0.58, 0.38],
+      [3.75, 0.06, 4.95, 0.68, 0.26, 0.62, 0.36],
+      // Background shore rocks around waterfall plunge pool
+      [-1.15, 0.34, -5.85, 1.22, 0.68, 1.08, 0.50],
+      [4.65, 0.36, -5.45, 1.32, 0.74, 1.12, 0.48],
+      [5.95, 0.44, -3.55, 1.42, 0.78, 1.32, 0.46],
+      [-2.35, 0.32, -4.55, 1.10, 0.58, 0.96, 0.52],
+      [6.15, 0.36, -1.65, 1.25, 0.66, 1.15, 0.48]
+    ];
+    shoreStones.forEach(([sx, sy, sz, rx, ry, rz, moss], idx) => {
+      const boulder = createSculptedMossyBoulder(rx, ry, rz, 2.3 + idx * 1.37, moss, false);
+      boulder.position.set(sx, sy, sz);
+      boulder.rotation.y = idx * 0.85;
+      root.add(boulder);
+    });
+
+    // Smaller wet river cobbles along the brook bed & pond sill
+    [
+      [2.55, 0.06, 2.95, 0.36], [3.85, 0.05, 2.85, 0.32], [2.75, 0.04, 3.95, 0.38],
+      [3.95, 0.04, 3.85, 0.34], [2.65, 0.03, 5.05, 0.40], [4.15, 0.03, 4.85, 0.35],
+      [3.05, 0.02, 5.95, 0.36], [4.25, 0.02, 5.95, 0.34], [2.35, 0.08, 3.35, 0.28],
+      [4.15, 0.08, 3.25, 0.30], [1.45, 0.10, 3.95, 0.32], [-0.95, 0.14, 3.75, 0.34],
+      [-2.85, 0.18, 4.05, 0.32], [1.95, 0.05, 5.45, 0.35], [3.55, 0.01, 6.45, 0.38],
+      [4.55, 0.04, 5.35, 0.32]
+    ].forEach(([cx, cy, cz, r], idx) => {
+      const cobble = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), wetCobbleMat);
+      cobble.scale.set(1.25, 0.56, 1.05);
+      cobble.position.set(cx, cy, cz);
+      cobble.rotation.set((idx % 3) * 0.1, idx * 1.1, 0);
+      cobble.receiveShadow = true;
+      root.add(cobble);
+    });
+
+    // Dark river-bed liner beneath the lower-right outlet brook so cascading water pops against wet stone
+    const brookBed = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 5.8), wetCobbleMat);
+    brookBed.rotation.x = -Math.PI / 2;
+    brookBed.rotation.z = -0.18;
+    brookBed.position.set(3.25, 0.02, 4.45);
+    root.add(brookBed);
+
+    // Lower-right foamy brook cascades weaving cleanly between wet mossy stream stones
+    const brookStrips = [];
+    [
+      { x: 3.15, y: 0.24, z: 2.85, w: 2.05, h: 3.1, ry: -0.22, rx: -1.26, speed: 1.38 },
+      { x: 3.55, y: 0.14, z: 5.35, w: 2.40, h: 3.4, ry: -0.16, rx: -1.42, speed: 1.56 }
+    ].forEach((bk) => {
+      const baseTex = this.createWaterfallFlowTexture();
+      const tex = typeof baseTex.clone === 'function' ? baseTex.clone() : baseTex;
+      tex.needsUpdate = true;
+      const bMesh = new THREE.Mesh(
+        new THREE.PlaneGeometry(bk.w, bk.h, 4, 8),
+        new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.86, depthWrite: false, side: THREE.DoubleSide })
+      );
+      bMesh.position.set(bk.x, bk.y, bk.z);
+      bMesh.rotation.order = 'YXZ';
+      bMesh.rotation.y = bk.ry;
+      bMesh.rotation.x = bk.rx;
+      bMesh.userData.scrollSpeed = bk.speed;
+      root.add(bMesh);
+      brookStrips.push(bMesh);
+    });
+
+    // Subtle swirling white foam puffs & ripples where brook water washes past the submerged boulders
+    [
+      [2.65, 0.24, 3.05], [3.65, 0.22, 3.25], [3.15, 0.20, 3.75],
+      [2.85, 0.16, 4.65], [3.85, 0.15, 4.75], [3.35, 0.12, 5.65]
+    ].forEach(([fx, fy, fz], idx) => {
+      const foamPuff = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), mistMat.clone());
+      foamPuff.scale.set(1.5, 0.28, 1.2);
+      foamPuff.position.set(fx, fy, fz);
+      foamPuff.userData = { baseX: fx, baseY: fy, baseZ: fz, phase: 0.15 + idx * 0.42 };
+      root.add(foamPuff);
+      mistPuffs.push(foamPuff);
+    });
+
+    // Arching green waterside ferns nestled between stone crevices (matching the reference photo)
+    [
+      [-3.35, 0.56, 2.55, 0.92],
+      [-2.95, 0.48, 3.85, 0.85],
+      [4.55, 0.45, 3.35, 1.05],
+      [4.95, 0.40, 4.85, 1.15],
+      [2.05, 0.26, 5.75, 0.88],
+      [-1.05, 0.45, -5.25, 1.02]
+    ].forEach(([fx, fy, fz, sc], i) => {
+      root.add(createWatersideFernCluster(fx, fy, fz, sc, i + 7));
+    });
+
+    // 7. FOREGROUND WOODEN TEA TABLE, CAST-IRON TEAPOT, TWO CUPS, STEAM & MEDITATION STONE
+    const teaGroup = new THREE.Group();
+    teaGroup.position.set(-2.05, 0.46, 5.05);
+    teaGroup.rotation.y = 0.22;
+    teaGroup.scale.set(1.12, 1.12, 1.12);
+
+    const tblTop = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.09, 0.92), cedarWarm);
+    tblTop.position.y = 0.56;
+    tblTop.castShadow = true;
+    const tblShelf = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.05, 0.72), cedarDark);
+    tblShelf.position.y = 0.22;
+    teaGroup.add(tblTop, tblShelf);
+    [[-0.58, -0.36], [0.58, -0.36], [-0.58, 0.36], [0.58, 0.36]].forEach(([lx, lz]) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.56, 0.08), cedarDark);
+      leg.position.set(lx, 0.28, lz);
+      teaGroup.add(leg);
+    });
+
+    // Cast-iron Tetsubin Teapot
+    const teapot = new THREE.Group();
+    teapot.position.set(-0.28, 0.62, -0.06);
+    const potBody = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 12), ironMat);
+    potBody.scale.set(1.12, 0.78, 1.12);
+    potBody.position.y = 0.12;
+    const potLid = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.03, 12), ironMat);
+    potLid.position.y = 0.25;
+    const potKnob = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 8), ironMat);
+    potKnob.position.y = 0.285;
+    const potSpout = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.036, 0.16, 8), ironMat);
+    potSpout.position.set(0.18, 0.17, 0);
+    potSpout.rotation.z = -0.82;
+    const potHandle = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.014, 6, 16, Math.PI), ironMat);
+    potHandle.position.set(0, 0.20, 0);
+    teapot.add(potBody, potLid, potKnob, potSpout, potHandle);
+    teaGroup.add(teapot);
+
+    // Two Celadon Teacups on Dark Wooden Saucers
+    [[0.16, 0.08], [0.40, -0.06]].forEach(([cx, cz]) => {
+      const saucer = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.02, 12), cedarDark);
+      saucer.position.set(cx, 0.615, cz);
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.048, 0.085, 12), ceramicCupMat);
+      cup.position.set(cx, 0.665, cz);
+      teaGroup.add(saucer, cup);
+    });
+
+    // 14 Animated Curling White Tea Steam Wisps rising softly from spout & both cups
+    const teaSteamPuffs = [];
+    const steamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.36, depthWrite: false });
+    const steamOrigins = [[-0.08, 0.78, -0.06], [0.16, 0.72, 0.08], [0.40, 0.72, -0.06]];
+    for (let si = 0; si < 14; si++) {
+      const sp = new THREE.Mesh(new THREE.SphereGeometry(0.052, 6, 5), steamMat.clone());
+      const orig = steamOrigins[si % steamOrigins.length];
+      sp.position.set(orig[0], orig[1], orig[2]);
+      sp.userData = {
+        ox: orig[0],
+        oy: orig[1],
+        oz: orig[2],
+        phase: si * 0.22,
+        speed: 0.42 + (si % 3) * 0.08
+      };
+      teaGroup.add(sp);
+      teaSteamPuffs.push(sp);
+    }
+    root.add(teaGroup);
+
+    // Meditation Lotus Cushion Stone beside the Tea Table for the Player Character
+    const seatStone = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.85, 0.26, 16), cliffRockMat);
+    seatStone.position.set(-0.95, 0.34, 4.75);
+    const seatPad = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.46, 0.50, 0.12, 18),
+      new THREE.MeshStandardMaterial({ color: 0xc29346, roughness: 0.78 })
+    );
+    seatPad.position.set(-0.95, 0.49, 4.75);
+    root.add(seatStone, seatPad);
+
+    // 8. OVERHANGING MAPLE & FOREST FOLIAGE CANOPY + CANYON SUNBEAMS
+    const branchMat = cedarDark;
+    const sprigMatA = new THREE.MeshStandardMaterial({
+      map: this.createBodhiLeafSprigTexture(1),
+      transparent: true,
+      alphaTest: 0.35,
+      side: THREE.DoubleSide
+    });
+    const sprigMatB = new THREE.MeshStandardMaterial({
+      map: this.createBodhiLeafSprigTexture(2),
+      transparent: true,
+      alphaTest: 0.35,
+      side: THREE.DoubleSide
+    });
+    const foliageGeo = new THREE.PlaneGeometry(2.6, 2.6);
+    const canopyClusters = [
+      [-3.8, 5.6, 3.2, 1.25], [-1.8, 6.0, 3.0, 1.20], [0.2, 6.4, 2.4, 1.15],
+      [3.2, 5.8, 3.0, 1.28], [4.8, 5.4, 2.8, 1.32], [5.8, 6.8, 1.2, 1.35],
+      [-5.6, 6.8, -3.5, 1.4], [-2.4, 8.2, -5.8, 1.3], [6.2, 7.8, -5.4, 1.4], [0.2, 8.6, -7.2, 1.2]
+    ];
+    canopyClusters.forEach(([fx, fy, fz, sc], ci) => {
+      const grp = new THREE.Group();
+      grp.position.set(fx, fy, fz);
+      for (let k = 0; k < 5; k++) {
+        const ang = (k / 5) * Math.PI * 2 + ci;
+        const m = new THREE.Mesh(foliageGeo, (ci + k) % 2 === 0 ? sprigMatA : sprigMatB);
+        m.position.set(Math.cos(ang) * 0.75, (k % 2) * 0.25, Math.sin(ang) * 0.75);
+        m.rotation.set(-0.65, ang, 0.3);
+        m.scale.set(sc, sc, sc);
+        grp.add(m);
+      }
+      root.add(grp);
+    });
+
+    // Diagonal Canyon Mist Sunbeams above the Plunge Pool
+    const rayMat = new THREE.MeshBasicMaterial({
+      color: 0xf4ffe0,
+      transparent: true,
+      opacity: 0.085,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    [[1.4, 6.4, -5.2], [3.1, 6.2, -4.6]].forEach(([bx, by, bz]) => {
+      const ray = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 3.6, 13, 10, 1, true), rayMat);
+      ray.position.set(bx, by, bz);
+      ray.rotation.z = -0.32;
+      ray.rotation.x = 0.22;
+      root.add(ray);
+    });
+
+    // Ambient Canyon Fill Light
+    const canyonSun = new THREE.PointLight(0xeefce8, 0.95, 28);
+    canyonSun.position.set(2.0, 9.2, -3.0);
+    root.add(canyonSun);
+
+    root.userData = {
+      waterfallStrips,
+      brookStrips,
+      mistPuffs,
+      poolRipples,
+      waterDrops,
+      teaSteamPuffs,
+      lanternLights
+    };
+    return root;
   }
 };

@@ -3040,3 +3040,157 @@ body.pure-view #temple-minimap-wrap {
     pointer-events: none;
   }
 }
+
+/* ==================== 「瀑布清流」 3D WATERFALL SANCTUARY OVERLAY ==================== */
+body.waterfall-mode #top-hud,
+body.waterfall-mode #side-panel,
+body.waterfall-mode #right-panel,
+body.waterfall-mode #sanctuary-dock,
+body.waterfall-mode #temple-minimap-wrap,
+body.waterfall-mode #touch-dpad,
+body.waterfall-mode .controls-hint,
+body.waterfall-mode #proximity-prompt,
+body.waterfall-mode #meditation-mat-bar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+#waterfall-sanctuary-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 20px 18px;
+}
+
+#waterfall-sanctuary-overlay.hidden {
+  display: none !important;
+}
+
+.waterfall-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.waterfall-title-badge {
+  pointer-events: auto;
+  background: rgba(24, 38, 30, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(244, 185, 66, 0.65);
+  color: #fff6dc;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 7px 16px;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+
+.waterfall-top-actions {
+  pointer-events: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.waterfall-bottom-bar {
+  pointer-events: auto;
+  align-self: center;
+  width: min(760px, 95vw);
+  background: rgba(22, 34, 27, 0.76);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(244, 185, 66, 0.58);
+  border-radius: 18px;
+  padding: 12px 18px;
+  color: #fff8e6;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.36);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+#waterfall-sanctuary-overlay.pure-hud .waterfall-bottom-bar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(16px);
+}
+
+.waterfall-verse-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fef3c7;
+}
+
+#waterfall-timer-text {
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: #bbf7d0;
+  white-space: nowrap;
+}
+
+.waterfall-progress-track {
+  flex: 1;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  overflow: hidden;
+}
+
+#waterfall-progress-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #6ee7b7, #facc15);
+  transition: width 0.2s linear;
+}
+
+.waterfall-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.waterfall-sliders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.waterfall-slider-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(244, 185, 66, 0.40);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff6df;
+}
+
+.waterfall-slider-pill input[type="range"] {
+  width: 74px;
+  accent-color: #f59e0b;
+  cursor: pointer;
+}
+
+.waterfall-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

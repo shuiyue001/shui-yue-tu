@@ -9,6 +9,13 @@ class TempleAudioEngine {
     this._mantraMusicPlaying = false;
     this._bgmAudio = null;
     this.bgmVolume = 0.20; // Slider level 0..1 (default 20% -> ~0.04 perceptual audio amplitude)
+    this.waterfallMusicVolume = 0.85;
+    this.waterfallStreamVolume = 0.38;
+    this._waterfallMusicAudio = null;
+    this._waterfallStreamAudio = null;
+    this._waterfallWavUrl = null;
+    this._waterfallStreamNodes = null;
+    this._wasBgmPlayingBeforeWaterfall = false;
     this._lastSpokenText = '';
     this._preferredVoice = null;
     this._initVoiceSelection();
@@ -107,6 +114,8 @@ class TempleAudioEngine {
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       if (this._mantraMusicPlaying) this.toggleMantraMusic(false);
     }
+    this.setWaterfallMusicVolume(this.waterfallMusicVolume, false);
+    this.setWaterfallStreamVolume(this.waterfallStreamVolume, false);
     return this.muted;
   }
 
@@ -774,6 +783,398 @@ class TempleAudioEngine {
     }
 
     return true;
+  }
+
+  // -------------------- 「瀑布清流」 SANCTUARY MUSIC + MULTI-LAYER WATERFALL & BROOK AUDIO --------------------
+  _getWaterfallStreamWavUrl() {
+    if (this._waterfallWavUrl) return this._waterfallWavUrl;
+
+    const sr = 22050;
+    const durationSec = 6;
+    const n = sr * durationSec;
+    const fadeSamples = Math.floor(sr * 0.25);
+    const total = n + fadeSamples;
+
+    const rawL = new Float32Array(total);
+    const rawR = new Float32Array(total);
+
+    // Deterministic LCG PRNG for organic noise without harsh spikes
+    let seed = 135792468;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return (seed / 4294967296) * 2 - 1;
+    };
+
+    // Pink-noise + multi-band water filter states per stereo channel
+    let b0L = 0, b1L = 0, b2L = 0, b3L = 0, b4L = 0, b5L = 0, b6L = 0;
+    let b0R = 0, b1R = 0, b2R = 0, b3R = 0, b4R = 0, b5R = 0, b6R = 0;
+    let lpRumbleL = 0, lpRumbleR = 0;
+    let lpCascadeHiL = 0, lpCascadeLoL = 0, lpCascadeHiR = 0, lpCascadeLoR = 0;
+    let lpBrookHiL = 0, lpBrookLoL = 0, lpBrookHiR = 0, lpBrookLoR = 0;
+
+    // Filter coefficients at 22050 Hz
+    const dt = 1 / sr;
+    const alpha = (fc) => {
+      const rc = 1 / (2 * Math.PI * fc);
+      return dt / (rc + dt);
+    };
+    const aRumble = alpha(280);
+    const aCascHi = alpha(2100);
+    const aCascLo = alpha(480);
+    const aBrookHi = alpha(1650);
+    const aBrookLo = alpha(680);
+
+    for (let i = 0; i < total; i++) {
+      const t = i / sr;
+
+      const wL = rand();
+      b0L = 0.99886 * b0L + wL * 0.0555179;
+      b1L = 0.99332 * b1L + wL * 0.0750759;
+      b2L = 0.96900 * b2L + wL * 0.1538520;
+      b3L = 0.86650 * b3L + wL * 0.3104856;
+      b4L = 0.55000 * b4L + wL * 0.5329522;
+      b5L = -0.7616 * b5L - wL * 0.0168980;
+      const pinkL = (b0L + b1L + b2L + b3L + b4L + b5L + b6L + wL * 0.5362) * 0.12;
+      b6L = wL * 0.115926;
+
+      const wR = rand();
+      b0R = 0.99886 * b0R + wR * 0.0555179;
+      b1R = 0.99332 * b1R + wR * 0.0750759;
+      b2R = 0.96900 * b2R + wR * 0.1538520;
+      b3R = 0.86650 * b3R + wR * 0.3104856;
+      b4R = 0.55000 * b4R + wR * 0.5329522;
+      b5R = -0.7616 * b5R - wR * 0.0168980;
+      const pinkR = (b0R + b1R + b2R + b3R + b4R + b5R + b6R + wR * 0.5362) * 0.12;
+      b6R = wR * 0.115926;
+
+      // 1. Deep Waterfall Plunge Rumble (120-420 Hz warm body + slow 1/6 & 2/6 Hz swell)
+      lpRumbleL += aRumble * (pinkL - lpRumbleL);
+      lpRumbleR += aRumble * (pinkR - lpRumbleR);
+      const swell = 0.82 + 0.12 * Math.sin(2 * Math.PI * (1 / 6) * t) + 0.06 * Math.cos(2 * Math.PI * (2 / 6) * t + 0.9);
+      const rumbleL = lpRumbleL * 1.45 * swell;
+      const rumbleR = lpRumbleR * 1.45 * swell;
+
+      // 2. Silky White-Water Cascade (500-2200 Hz stereo-decorrelated cascade)
+      lpCascadeHiL += aCascHi * (pinkL - lpCascadeHiL);
+      lpCascadeLoL += aCascLo * (pinkL - lpCascadeLoL);
+      lpCascadeHiR += aCascHi * (pinkR - lpCascadeHiR);
+      lpCascadeLoR += aCascLo * (pinkR - lpCascadeLoR);
+      const cascEnvL = 0.85 + 0.15 * Math.sin(2 * Math.PI * (3 / 6) * t + 0.4);
+      const cascEnvR = 0.85 + 0.15 * Math.cos(2 * Math.PI * (4 / 6) * t + 1.1);
+      const cascadeL = (lpCascadeHiL - lpCascadeLoL) * 1.35 * cascEnvL;
+      const cascadeR = (lpCascadeHiR - lpCascadeLoR) * 1.35 * cascEnvR;
+
+      // 3. Babbling Rocky Brook Gurgle (1.5 Hz, 2.5 Hz, 3.8 Hz modulation)
+      lpBrookHiL += aBrookHi * (wL * 0.35 + pinkL * 0.65 - lpBrookHiL);
+      lpBrookLoL += aBrookLo * (wL * 0.35 + pinkL * 0.65 - lpBrookLoL);
+      lpBrookHiR += aBrookHi * (wR * 0.35 + pinkR * 0.65 - lpBrookHiR);
+      lpBrookLoR += aBrookLo * (wR * 0.35 + pinkR * 0.65 - lpBrookLoR);
+      const gurgleL = 0.48 + 0.22 * Math.sin(2 * Math.PI * 1.5 * t) + 0.18 * Math.sin(2 * Math.PI * 2.5 * t + 1.3) + 0.12 * Math.sin(2 * Math.PI * 3.8333 * t + 0.5);
+      const gurgleR = 0.48 + 0.22 * Math.sin(2 * Math.PI * 1.5 * t + 1.1) + 0.18 * Math.cos(2 * Math.PI * 2.5 * t + 0.4) + 0.12 * Math.sin(2 * Math.PI * 3.8333 * t + 2.2);
+      const brookL = (lpBrookHiL - lpBrookLoL) * 1.25 * gurgleL;
+      const brookR = (lpBrookHiR - lpBrookLoR) * 1.25 * gurgleR;
+
+      rawL[i] = rumbleL + cascadeL + brookL;
+      rawR[i] = rumbleR + cascadeR + brookR;
+    }
+
+    // Blend loop tail over head with 0.25s cosine crossfade before adding wrapped droplets
+    const outL = new Float32Array(n);
+    const outR = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      outL[i] = rawL[i];
+      outR[i] = rawR[i];
+    }
+    for (let i = 0; i < fadeSamples; i++) {
+      const k = i / fadeSamples;
+      const wHead = 0.5 * (1 - Math.cos(Math.PI * k));
+      const wTail = 1 - wHead;
+      outL[i] = rawL[i] * wHead + rawL[n + i] * wTail;
+      outR[i] = rawR[i] * wHead + rawR[n + i] * wTail;
+    }
+
+    // Overlay ~45 soft water-bubble & stream droplet chirps (550-1600 Hz), wrapped modulo loop length
+    for (let d = 0; d < 45; d++) {
+      const startSample = Math.floor(((d + 0.35 + (d % 3) * 0.18) / 45) * n);
+      const freq = 550 + ((d * 197) % 1050);
+      const lenSamples = Math.floor(sr * (0.045 + (d % 4) * 0.015));
+      const panL = d % 2 === 0 ? 0.85 : 0.45;
+      const panR = d % 2 === 0 ? 0.45 : 0.85;
+      const amp = 0.048 + (d % 3) * 0.014;
+      for (let k = 0; k < lenSamples; k++) {
+        const idx = (startSample + k) % n;
+        const kt = k / sr;
+        const env = Math.sin(Math.PI * (k / lenSamples)) * Math.exp(-kt * 26);
+        const pitchGlide = freq * (1 + 0.18 * (k / lenSamples));
+        const val = Math.sin(2 * Math.PI * pitchGlide * kt) * env * amp;
+        outL[idx] += val * panL;
+        outR[idx] += val * panR;
+      }
+    }
+
+    // Peak normalize to ~0.68
+    let peak = 0.001;
+    for (let i = 0; i < n; i++) {
+      const aL = Math.abs(outL[i]);
+      const aR = Math.abs(outR[i]);
+      if (aL > peak) peak = aL;
+      if (aR > peak) peak = aR;
+    }
+    const norm = 0.68 / peak;
+
+    const dataBytes = n * 4;
+    const wavBytes = new Uint8Array(44 + dataBytes);
+    const view = new DataView(wavBytes.buffer);
+    const writeStr = (off, s) => { for (let j = 0; j < s.length; j++) wavBytes[off + j] = s.charCodeAt(j); };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + dataBytes, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 2, true); // Stereo
+    view.setUint32(24, sr, true);
+    view.setUint32(28, sr * 4, true);
+    view.setUint16(32, 4, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, dataBytes, true);
+
+    let p = 44;
+    for (let i = 0; i < n; i++) {
+      const sL = Math.max(-1, Math.min(1, outL[i] * norm));
+      const sR = Math.max(-1, Math.min(1, outR[i] * norm));
+      view.setInt16(p, Math.round(sL * 32767), true);
+      view.setInt16(p + 2, Math.round(sR * 32767), true);
+      p += 4;
+    }
+
+    if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      this._waterfallWavUrl = URL.createObjectURL(new Blob([wavBytes], { type: 'audio/wav' }));
+    } else {
+      let bin = '';
+      for (let i = 0; i < wavBytes.length; i++) bin += String.fromCharCode(wavBytes[i]);
+      this._waterfallWavUrl = 'data:audio/wav;base64,' + (typeof btoa === 'function' ? btoa(bin) : '');
+    }
+    return this._waterfallWavUrl;
+  }
+
+  startWaterfallStreamAmbient() {
+    this.stopWaterfallStreamAmbient();
+
+    const scale = Math.max(0, Math.min(1, Number(this.waterfallStreamVolume) || 0));
+
+    // 1. Primary Stereo WAV Waterfall & Babbling Brook Loop (guaranteed audible HTML5 playback)
+    if (typeof Audio !== 'undefined') {
+      try {
+        if (!this._waterfallStreamAudio) {
+          const wavUrl = this._getWaterfallStreamWavUrl();
+          const created = new Audio(wavUrl);
+          created.loop = true;
+          created.preload = 'auto';
+          this._waterfallStreamAudio = created;
+        }
+        const streamAudio = this._waterfallStreamAudio;
+        streamAudio.volume = this.muted ? 0 : Math.max(0, Math.min(1, scale * 0.90));
+        streamAudio.muted = this.muted || scale <= 0.005;
+        streamAudio.currentTime = 0;
+        if (!this.muted && scale > 0.005) {
+          const p = streamAudio.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        }
+      } catch (e) {}
+    }
+
+    if (this.muted) return false;
+    this.init();
+    if (!this.ctx) return true;
+
+    // 2. Live WebAudio Layered Cascade & Brook Shimmer
+    const bufferSize = this.ctx.sampleRate * 4;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99886 * b0 + white * 0.0555179;
+      b1 = 0.99332 * b1 + white * 0.0750759;
+      b2 = 0.96900 * b2 + white * 0.1538520;
+      b3 = 0.86650 * b3 + white * 0.3104856;
+      b4 = 0.55000 * b4 + white * 0.5329522;
+      b5 = -0.7616 * b5 - white * 0.0168980;
+      const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.28;
+      b6 = white * 0.115926;
+      data[i] = pink;
+    }
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.loop = true;
+
+    const now = this.ctx.currentTime;
+    const lowFilter = this.ctx.createBiquadFilter();
+    lowFilter.type = 'lowpass';
+    lowFilter.frequency.setValueAtTime(360, now);
+
+    const silkFilter = this.ctx.createBiquadFilter();
+    silkFilter.type = 'bandpass';
+    silkFilter.frequency.setValueAtTime(1050, now);
+    silkFilter.Q.setValueAtTime(0.75, now);
+
+    const shimmerFilter = this.ctx.createBiquadFilter();
+    shimmerFilter.type = 'bandpass';
+    shimmerFilter.frequency.setValueAtTime(1650, now);
+    shimmerFilter.Q.setValueAtTime(0.7, now);
+
+    const lowGain = this.ctx.createGain();
+    const silkGain = this.ctx.createGain();
+    const shimmerGain = this.ctx.createGain();
+    const masterGain = this.ctx.createGain();
+
+    lowGain.gain.setValueAtTime(0.58, now);
+    silkGain.gain.setValueAtTime(0.38, now);
+    shimmerGain.gain.setValueAtTime(0.34, now);
+
+    const targetGain = this.muted ? 0.0001 : Math.max(0.0001, scale * 0.42);
+    masterGain.gain.setValueAtTime(0.0001, now);
+    masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.8);
+
+    src.connect(lowFilter);
+    src.connect(silkFilter);
+    src.connect(shimmerFilter);
+    lowFilter.connect(lowGain);
+    silkFilter.connect(silkGain);
+    shimmerFilter.connect(shimmerGain);
+    lowGain.connect(masterGain);
+    silkGain.connect(masterGain);
+    shimmerGain.connect(masterGain);
+    masterGain.connect(this.ctx.destination);
+    src.start();
+
+    this._waterfallStreamNodes = { src, masterGain };
+    return true;
+  }
+
+  stopWaterfallStreamAmbient() {
+    if (this._waterfallStreamAudio) {
+      try {
+        this._waterfallStreamAudio.pause();
+        this._waterfallStreamAudio.currentTime = 0;
+      } catch (e) {}
+    }
+    if (!this._waterfallStreamNodes) return;
+    const nodes = this._waterfallStreamNodes;
+    this._waterfallStreamNodes = null;
+    try {
+      if (nodes.masterGain && this.ctx) {
+        if (typeof nodes.masterGain.gain.cancelScheduledValues === 'function') {
+          nodes.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
+        }
+        nodes.masterGain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.35);
+      }
+      setTimeout(() => {
+        try { nodes.src.stop(); } catch (e) {}
+      }, 400);
+    } catch (e) {}
+  }
+
+  setWaterfallMusicVolume(vol, unmuteOnAdjust = true) {
+    const v = Math.max(0, Math.min(1, Number(vol)));
+    if (!Number.isFinite(v)) return this.waterfallMusicVolume;
+    if (unmuteOnAdjust && v > 0.01 && this.muted) {
+      this.muted = false;
+    }
+    this.waterfallMusicVolume = v;
+    if (this._waterfallMusicAudio) {
+      this._waterfallMusicAudio.volume = this.muted ? 0 : v;
+      this._waterfallMusicAudio.muted = this.muted || v <= 0.005;
+    }
+    return this.waterfallMusicVolume;
+  }
+
+  setWaterfallStreamVolume(vol, unmuteOnAdjust = true) {
+    const v = Math.max(0, Math.min(1, Number(vol)));
+    if (!Number.isFinite(v)) return this.waterfallStreamVolume;
+    if (unmuteOnAdjust && v > 0.01 && this.muted) {
+      this.muted = false;
+    }
+    this.waterfallStreamVolume = v;
+    this.init();
+    if (!this._waterfallStreamAudio && v > 0.01 && !this.muted) {
+      this.startWaterfallStreamAmbient();
+      return this.waterfallStreamVolume;
+    }
+    if (this._waterfallStreamAudio) {
+      this._waterfallStreamAudio.volume = this.muted ? 0 : Math.max(0, Math.min(1, v * 0.90));
+      this._waterfallStreamAudio.muted = this.muted || v <= 0.005;
+      if (!this.muted && v > 0.005 && this._waterfallStreamAudio.paused) {
+        try {
+          const p = this._waterfallStreamAudio.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (e) {}
+      }
+    }
+    if (this._waterfallStreamNodes && this._waterfallStreamNodes.masterGain && this.ctx) {
+      const now = this.ctx.currentTime;
+      const target = this.muted ? 0.0001 : Math.max(0.0001, v * 0.42);
+      const gainParam = this._waterfallStreamNodes.masterGain.gain;
+      if (typeof gainParam.cancelScheduledValues === 'function') {
+        gainParam.cancelScheduledValues(now);
+      }
+      if (typeof gainParam.setValueAtTime === 'function') {
+        gainParam.setValueAtTime(target, now);
+      } else if (typeof gainParam.setTargetAtTime === 'function') {
+        gainParam.setTargetAtTime(target, now, 0.03);
+      }
+    }
+    return this.waterfallStreamVolume;
+  }
+
+  startWaterfallSanctuaryAudio(onEndedCallback = null) {
+    this._wasBgmPlayingBeforeWaterfall = !!this._mantraMusicPlaying;
+    if (this._mantraMusicPlaying) {
+      this.toggleMantraMusic(false);
+    }
+
+    if (typeof Audio !== 'undefined') {
+      if (!this._waterfallMusicAudio) {
+        const src = (window.INLINE_ASSETS && window.INLINE_ASSETS['assets/waterfall_zen_music.m4a']) || 'assets/waterfall_zen_music.m4a';
+        const audio = new Audio(src);
+        audio.preload = 'auto';
+        audio.loop = false;
+        this._waterfallMusicAudio = audio;
+      }
+      const audio = this._waterfallMusicAudio;
+      audio.onended = typeof onEndedCallback === 'function' ? onEndedCallback : null;
+      audio.volume = this.muted ? 0 : Math.max(0, Math.min(1, this.waterfallMusicVolume));
+      audio.muted = this.muted || this.waterfallMusicVolume <= 0.005;
+      try {
+        audio.currentTime = 0;
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch (e) {}
+    }
+
+    this.startWaterfallStreamAmbient();
+    return true;
+  }
+
+  replayWaterfallSanctuaryAudio(onEndedCallback = null) {
+    this.startWaterfallSanctuaryAudio(onEndedCallback);
+  }
+
+  stopWaterfallSanctuaryAudio(resumeBgm = true) {
+    if (this._waterfallMusicAudio) {
+      try {
+        this._waterfallMusicAudio.pause();
+        this._waterfallMusicAudio.currentTime = 0;
+      } catch (e) {}
+    }
+    this.stopWaterfallStreamAmbient();
+    if (resumeBgm && this._wasBgmPlayingBeforeWaterfall && !this.muted) {
+      this._wasBgmPlayingBeforeWaterfall = false;
+      this.toggleMantraMusic(true);
+    }
   }
 }
 

@@ -39,9 +39,11 @@ window.GAME_DATA = {
       return 0;
     }
 
-    // Back Alpine Slope behind Grand 大雄宝殿 (z < -46, x in [-26, 26.8])
+    // Back Rolling Ghibli Slope behind Grand 大雄宝殿 (z < -46, x in [-26, 26.8])
     if (x >= -26.0 && x <= 26.8 && z < -46.0) {
-      return Math.min(24.0, ((-46.0 - z) / 26.0) * 24.0);
+      const nt = Math.min(1, (-46.0 - z) / 36.0);
+      const xFade = Math.max(0, 1 - Math.pow(x / 27.0, 4));
+      return nt * nt * (9.5 + Math.cos(x * 0.12) * 2.0) * xFade;
     }
 
     // 1. East Mountain across East River: 五台山文殊殿 (z ~ +4)
@@ -109,11 +111,13 @@ window.GAME_DATA = {
         westH = 16.5 + Math.min(20.0, ((-136.0 - x) / 30.0) * 20.0);
       }
 
-      // Flatten level circular terraces along the climb so West Trail Deeds sit 100% level!
+      // Flatten level circular terraces along the climb so West Trail Deeds & Waterfall Path sit 100% level!
       const stations = [
         { x: -39.0, z: 18.0 },
         { x: -57.0, z: 18.0 },
-        { x: -48.0, z: -14.0 }
+        { x: -48.0, z: -14.0 },
+        { x: -45.5, z: 10.5 },
+        { x: -41.5, z: 47.0 }
       ];
       for (const st of stations) {
         const dSt = Math.hypot(x - st.x, z - st.z);
@@ -124,11 +128,11 @@ window.GAME_DATA = {
         }
       }
 
-      // Smooth outer Z edges only beyond z < -36 or z > 44 so nothing encroaches on the open summit plaza
+      // Smooth outer Z edges only beyond z < -36 or z > 52 so nothing encroaches on the open summit or waterfall grove
       if (z < -36.0) {
         westH += Math.min(1, (-36.0 - z) / 12.0) * 4.5;
-      } else if (z > 44.0) {
-        westH += Math.min(1, (z - 44.0) / 14.0) * 5.0;
+      } else if (z > 52.0) {
+        westH += Math.min(1, (z - 52.0) / 14.0) * 5.0;
       }
       return westH;
     }
@@ -1855,5 +1859,28 @@ window.GAME_DATA = {
       desc: 'Complete the 10-stop journey with fearless wisdom and full Virtue & Liberation!',
       zhDesc: '圆满功德与解脱资粮，登临第 10 站寻访不空成就如来，成就成所作智！'
     }
-  ]
+  ],
+
+  WATERFALL_SANCTUARY_DATA: {
+    id: 'waterfall_sanctuary',
+    title: 'Waterfall Pure Stream',
+    zhTitle: '瀑布清流',
+    junctionPos: { x: -45.5, z: 10.5 },
+    grovePos: { x: -41.5, z: 47.0 },
+    waypoints: [
+      { x: -45.5, z: 6.2 },
+      { x: -45.5, z: 10.5 },
+      { x: -44.8, z: 22.0 },
+      { x: -43.4, z: 34.5 },
+      { x: -41.5, z: 47.0 }
+    ],
+    vpReward: 10,
+    durationSec: 83,
+    verses: [
+      { time: 0, zh: '「众生为一切众生，必现轮涅法，能思所欲果，顶礼如一心。」', en: '"For all beings, every appearance manifests in stillness; bowing with one pure heart."' },
+      { time: 24, zh: '「心伏则受缚，必解定解脱；愚者因此缚，智者速解脱。」', en: '"What binds the mind can also free it; through clarity and stillness comes liberation."' },
+      { time: 50, zh: '「知心如虚空，知心为虚空；心若不作意，得无上菩提。」', en: '"Know mind like open sky, calm and unattached, dwelling in supreme peace."' },
+      { time: 68, zh: '🌊 静听飞瀑清流，茶烟袅袅，安住当下圆满法喜。', en: '🌊 Rest quietly beside the falling cascade as warm tea steam drifts into stillness.' }
+    ]
+  }
 };
